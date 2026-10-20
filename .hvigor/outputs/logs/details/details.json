@@ -1,0 +1,108 @@
+{
+  "HVIGOR_OHOS_PLUGIN": {
+    "MODULES": [
+      {
+        "MODULE_NAME": "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf",
+        "API_TYPE": "stageMode",
+        "INCLUDE_IN_BUILD": true,
+        "IS_COMMAND_LINE_ENTRY_MODULE": false,
+        "BUILD_OPTION": [
+          {
+            "path": "debuggable",
+            "traceValue": true,
+            "value": true
+          },
+          {
+            "path": "copyFrom",
+            "traceValue": false,
+            "value": ""
+          },
+          {
+            "path": "strictMode",
+            "traceValue": false,
+            "value": ""
+          },
+          {
+            "path": "strictMode.caseSensitiveCheck",
+            "traceValue": true,
+            "value": true
+          },
+          {
+            "path": "strictMode.useNormalizedOHMUrl",
+            "traceValue": true,
+            "value": true
+          },
+          {
+            "path": "resOptions",
+            "traceValue": false,
+            "value": ""
+          },
+          {
+            "path": "resOptions.copyCodeResource",
+            "traceValue": false,
+            "value": ""
+          },
+          {
+            "path": "resOptions.copyCodeResource.enable",
+            "traceValue": true,
+            "value": false
+          }
+        ],
+        "PACKAGE_JSON": [],
+        "MODULE_TYPE": "entry",
+        "INCREMENTAL_TASKS": {
+          "COMPILE_ARKTS": true
+        },
+        "IS_INCREMENTAL_MODULE": true
+      }
+    ],
+    "NATIVE_COMPILER": "Default",
+    "IS_FULL_BUILD": false,
+    "PACKAGE_JSON": [],
+    "BUILD_MODE": "debug"
+  },
+  "HVIGOR": {
+    "IS_INCREMENTAL": true,
+    "IS_DAEMON": false,
+    "IS_PARALLEL": true,
+    "IS_HVIGORFILE_TYPE_CHECK": false,
+    "IS_EXECUTION_OHPM_BY_HVIGOR": false,
+    "IS_SYNCNATIVE_COMPILATION": false,
+    "BUILD_ANALYSIS_MODE": "normal",
+    "OPTIMIZATION_STRATEGY": "memory",
+    "TASK_TIME": {
+      "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
+        "CreateModuleInfo": 2091200,
+        "ConfigureCmake": 411800,
+        "PreCheckSyscap": 710100,
+        "GeneratePkgSdkInfo": 3067100,
+        "ProcessIntegratedHsp": 1233800,
+        "BuildNativeWithCmake": 715500,
+        "SyscapTransform": 19208100,
+        "ProcessStartupConfig": 2617900,
+        "BuildNativeWithNinja": 1238200,
+        "BuildJS": 2667900,
+        "CompileArkTS": 10242344800,
+        "ProcessCompiledResources": 999000,
+        "PackageHap": 2777552700,
+        "PackingCheck": 56378700,
+        "SignHap": 2457400,
+        "CollectDebugSymbol": 1419900,
+        "assembleHap": 356300
+      }
+    },
+    "CUSTOM_TASK_TIME": {},
+    "CUSTOM_PLUGIN_TIME": {},
+    "APIS": [
+      "getProperty"
+    ],
+    "CONFIG_EXPERIMENT": {
+      "ENABLE_MODULE_SKIP": false,
+      "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
+    },
+    "CONFIG_PROPERTIES": {},
+    "BUILD_ID": "202610202243595340",
+    "PID": 38752,
+    "TOTAL_TIME": 16577083200
+  }
+}

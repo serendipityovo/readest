@@ -1,0 +1,27 @@
+# 构建产物
+entry/build/
+*.hap
+*.har
+
+# 依赖
+oh_modules/
+node_modules/
+
+# 前端生成物（package_frontend.sh 可重建）
+entry/src/main/resources/rawfile/frontend/
+
+# 实验室 www：白名单手写资产（mock/shim/probe/语料），Next 导出物全部忽略
+.browserlab/www/*
+!.browserlab/www/mock_bridge.js
+!.browserlab/www/tauri_shim.js
+!.browserlab/www/probe_*.html
+!.browserlab/www/corpus/
+
+# 实验室其余
+.browserlab/.edge-profile*/
+.browserlab/server.log
+
+# 截图与临时
+.shots/
+*.log
+.DS_Store

@@ -1,0 +1,131 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>TTS-PROBE</title>
+</head><body>
+<div id="out" style="font-size:12px;white-space:pre-wrap;max-height:220px;overflow:auto">TTS-PROBE-PENDING</div>
+<iframe id="app" style="width:412px;height:800px;border:1px solid #ccc"></iframe>
+<script>
+// D10 回归 v3 断言源：native 引擎朗读 30 秒内 speak 调用 ≥6 次（D7 语义
+// 复验）。同源 iframe 装 reader，parent 驱动 't' 键并读 iframe 的 census。
+(function () {
+  var out = document.getElementById('out');
+  var marks = ['TTS-PROBE'];
+  function mark(s) { marks.push(s); out.textContent = marks.join('\n'); }
+  function frame() { return document.getElementById('app'); }
+  function win() { return frame().contentWindow; }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function waitFor(fn, timeout, label) {
+    var t0 = Date.now();
+    while (Date.now() - t0 < timeout) {
+      try { var v = fn(); if (v) return v; } catch (e) { /* keep polling */ }
+      await sleep(300);
+    }
+    throw new Error('timeout: ' + label);
+  }
+  async function run() {
+    // Repro 小书：全文约 3 句——大书（红楼梦 1.1MB）在 mock read_file 的
+    // 4MB JSON 字节数组下渲染超时导致取句失败（性能观察项），小书 3 句
+    // 连续 speak + 完成即证明持续推进语义（D10 断言的意图）
+    var res = await fetch('/corpus/repro.epub');
+    var buf = await res.arrayBuffer();
+    var bytes = new Uint8Array(buf);
+    var binary = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    var BOOK_HASH = '1ee376c46ebb5828c72a217e268377f3';
+    var BOOK_FILE = '/lab/files/Readest/Books/' + BOOK_HASH + '/Repro_ table-layout cover loop.epub';
+    var files = {};
+    files[BOOK_FILE] = { __b64: btoa(binary) };
+    try {
+      var prev = JSON.parse(localStorage.getItem('labfs_files') || '{}');
+      if (prev && prev['/lab/files/settings.json']) {
+        var sj = prev['/lab/files/settings.json'];
+        var s = typeof sj === 'string' ? sj : (sj.text || '');
+        if (s) {
+          var settings = JSON.parse(s);
+          settings.language = 'zh-CN';
+          settings.globalViewSettings = settings.globalViewSettings || {};
+          settings.globalViewSettings.uiLanguage = 'zh-CN';
+          files['/lab/files/settings.json'] = JSON.stringify(settings);
+        }
+      }
+    } catch (e) { /* fresh profile */ }
+    var library = [{
+      hash: BOOK_HASH,
+      format: 'EPUB',
+      title: 'Repro: table-layout cover loop',
+      sourceTitle: 'Repro_ table-layout cover loop.epub',
+      author: '',
+      filePath: BOOK_FILE,
+      createdAt: Date.now() - 3600000,
+      updatedAt: Date.now() - 1800000,
+      deletedAt: null,
+      coverImageUrl: null
+    }];
+    files['/lab/files/Readest/Books/library.json'] = JSON.stringify(library);
+    localStorage.setItem('labfs_files', JSON.stringify(files));
+    localStorage.setItem('labfs_dirs', '["/lab/downloads","/lab/files","/lab/files/Readest","/lab/files/Readest/Books","/lab/files/Readest/Books/' + BOOK_HASH + '"]');
+    localStorage.setItem('labdb_files__Readest__Books__' + BOOK_HASH + '__search.db', JSON.stringify({ tables: {}, userVersion: 1, seq: {} }));
+    localStorage.setItem('i18nextLng', 'zh-CN');
+    localStorage.setItem('ttsPreferredVoices', JSON.stringify({ preferredClient: 'native-tts' }));
+    mark('SEEDED');
+    frame().src = '/reader?ids=' + BOOK_HASH;
+    await waitFor(function () {
+      var w = win();
+      return w && w.__census && w.__census.length > 50;
+    }, 45000, 'reader boot + census');
+    mark('READER-UP census=' + win().__census.length);
+    await sleep(4000); // settle（D7：reload 后首触发需 6-9s，含 boot 已超）
+    var KEvent = win().KeyboardEvent;
+    // 长书解析慢 + 引擎探测链（Edge 快速失败 → native init → 首句准备）
+    // 需 10s+；每轮 t 后等 14s，speak 出现即停手（再发 t 会关闭播放——
+    // 首轮诊断实证 update_media_session_metadata 已出现但 4s 窗口误判）
+    var speaks = 0;
+    var attempts = 0;
+    for (attempts = 0; attempts < 4 && speaks === 0; attempts++) {
+      await sleep(6000);
+      win().dispatchEvent(new KEvent('keydown', { key: 't', code: 'KeyT', bubbles: true }));
+      await sleep(14000);
+      speaks = (win().__census || []).filter(function (c) {
+        return String(c[0]) === 'plugin:native-tts|speak';
+      }).length;
+    }
+    mark('T-ATTEMPTS: ' + attempts + ' speaks0: ' + speaks);
+    // 轮询至 speak ≥6（长书朗读会无限消耗虚拟时间，必须主动停止才能
+    // 让 dump-dom settle）——达标后再发 't' 关闭朗读
+    var pollStart = Date.now();
+    while (speaks < 3 && Date.now() - pollStart < 45000) {
+      await sleep(1000);
+      speaks = (win().__census || []).filter(function (c) {
+        return String(c[0]) === 'plugin:native-tts|speak';
+      }).length;
+    }
+    mark('SPEAKS: ' + speaks + ' (in ' + (Date.now() - pollStart) + 'ms)');
+    // 停止朗读（'t' 为切换键；触发关闭让定时器链终止）
+    win().dispatchEvent(new KEvent('keydown', { key: 't', code: 'KeyT', bubbles: true }));
+    await sleep(3000);
+    var finalSpeaks = (win().__census || []).filter(function (c) {
+      return String(c[0]) === 'plugin:native-tts|speak';
+    }).length;
+    var ttsErrs = (win().__errors || []).filter(function (e) {
+      return /tts|speak|utter/i.test(String(e));
+    }).slice(0, 3);
+    mark('SPEAKS-FINAL: ' + finalSpeaks);
+    try {
+      var ttsSeq = (win().__census || []).filter(function (c) {
+        return String(c[0]).indexOf('native-tts') >= 0 || String(c[0]).indexOf('websocket') >= 0;
+      }).map(function (c) { return String(c[0]).replace('plugin:native-tts|', 'T:').replace('plugin:websocket|', 'W:'); });
+      mark('TTS-SEQ(' + ttsSeq.length + '): ' + ttsSeq.slice(0, 40).join(','));
+      var errs2 = (win().__errors || []).filter(function (e) {
+        return /tts|speak|edge|ws/i.test(String(e));
+      }).slice(0, 6);
+      mark('TTS-ERRS2: ' + (errs2.join(' | ') || 'none').slice(0, 500));
+    } catch (e) { /* keep going */ }
+    mark('TTS-ERRS: ' + (ttsErrs.join(' | ') || 'none'));
+    mark(finalSpeaks >= 3 ? 'TTS-PROBE-PASS' : 'TTS-PROBE-FAIL');
+  }
+  run().catch(function (e) {
+    mark('TTS-PROBE-FAIL :: ' + (e && e.message ? e.message : String(e)));
+  });
+}());
+</script></body></html>

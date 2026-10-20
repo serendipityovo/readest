@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Readest 电子书阅读器主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Readest 电子书阅读器"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Readest"
+    }
+  ]
+}

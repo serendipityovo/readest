@@ -1,0 +1,157 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<script src="/tauri_shim.js?v=evt1"></script>
+<script src="/mock_bridge.js?v=pick1"></script>
+</head><body><div id="out">PROBE-PENDING</div><div id="log"></div>
+<script>
+// D3A probe: mock turso path end-to-end through the REAL shim invoke
+// (__TAURI_INTERNALS__.invoke), using statement shapes taken verbatim from
+// migrate.ts, migrations/index.ts, librarySearchIndex.ts and bookorbit.
+(function () {
+  var out = document.getElementById('out');
+  var logEl = document.getElementById('log');
+  function log(s) { try { logEl.textContent += '|' + s; } catch (e) { /* keep going */ } }
+  function show(s) { out.textContent = s; }
+  window.addEventListener('unhandledrejection', function (e) {
+    log('unhandled:' + ((e && e.reason && e.reason.message) || e.reason || e));
+  });
+  try {
+    var invoke = window.__TAURI_INTERNALS__.invoke;
+    var DB = 'sqlite:/lab/files/app-config/probe.db';
+    invoke('plugin:turso|batch', { db: DB, queries: ['DROP TABLE IF EXISTS probe', 'DROP TABLE IF EXISTS __migrations', 'DROP TABLE IF EXISTS search_sections'] })
+      .then(function () {
+        return invoke('plugin:turso|load', { options: { path: DB } });
+      })
+      .then(function (path) {
+        log('load-ok');
+        if (path !== DB) throw new Error('load echo mismatch: ' + path);
+        return invoke('plugin:turso|execute', { db: DB, query: "CREATE TABLE IF NOT EXISTS probe (id INTEGER PRIMARY KEY, name TEXT)", values: [] });
+      })
+      .then(function () {
+        return invoke('plugin:turso|execute', { db: DB, query: 'DELETE FROM probe', values: [] });
+      })
+      .then(function () {
+        return invoke('plugin:turso|execute', {
+          db: DB,
+          query: 'INSERT INTO probe (name) VALUES ($1), ($2), ($3)',
+          values: ['三体·黑暗森林', 'emoji📖测试', 'plain ascii']
+        });
+      })
+      .then(function (r) {
+        log('ins-ok:' + JSON.stringify(r));
+        if (!r || r.rowsAffected !== 3 || r.lastInsertId !== 3) {
+          throw new Error('execute result mismatch: ' + JSON.stringify(r));
+        }
+        return invoke('plugin:turso|select', {
+          db: DB, query: 'SELECT id, name FROM probe WHERE id >= $1 ORDER BY id', values: [1]
+        });
+      })
+      .then(function (rows) {
+        log('sel-ok:' + JSON.stringify(rows).slice(0, 100));
+        if (!rows || rows.length !== 3) throw new Error('select rows mismatch: ' + JSON.stringify(rows));
+        if (rows[1].name !== 'emoji📖测试') throw new Error('CJK/emoji mismatch: ' + JSON.stringify(rows));
+        // migrate.ts tracking-table shape (AUTOINCREMENT + quoted literal)
+        return invoke('plugin:turso|execute', {
+          db: DB,
+          query: 'CREATE TABLE IF NOT EXISTS __migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+          values: []
+        });
+      })
+      .then(function () {
+        return invoke('plugin:turso|execute', {
+          db: DB, query: "INSERT INTO __migrations (name) VALUES ('2026080101_library_search_sections')", values: []
+        });
+      })
+      .then(function () {
+        return invoke('plugin:turso|select', { db: DB, query: 'SELECT name FROM __migrations', values: [] });
+      })
+      .then(function (applied) {
+        log('migrate-table:' + JSON.stringify(applied));
+        if (!applied || applied.length !== 1 || applied[0].name !== '2026080101_library_search_sections') {
+          throw new Error('migrations table mismatch: ' + JSON.stringify(applied));
+        }
+        // batch = migrate() atomicity: statements + tracking insert + user_version
+        return invoke('plugin:turso|batch', {
+          db: DB,
+          queries: [
+            'CREATE TABLE IF NOT EXISTS search_sections (idx INTEGER PRIMARY KEY, label TEXT NOT NULL DEFAULT \'\', text TEXT NOT NULL, folded TEXT)',
+            "INSERT INTO search_sections (idx, label, text, folded) VALUES (1, '第一章', '黑暗森林法则', NULL)",
+            "INSERT INTO __migrations (name) VALUES ('batched-migration')",
+            'PRAGMA user_version = 7'
+          ]
+        });
+      })
+      .then(function () {
+        return invoke('plugin:turso|select', { db: DB, query: 'PRAGMA user_version', values: [] });
+      })
+      .then(function (v) {
+        log('uv:' + JSON.stringify(v));
+        if (!v || !v[0] || v[0].user_version !== 7) throw new Error('user_version mismatch: ' + JSON.stringify(v));
+        // librarySearchIndex.ts search shape: COALESCE + LIKE + ESCAPE
+        return invoke('plugin:turso|select', {
+          db: DB,
+          query: "SELECT idx, label FROM search_sections WHERE COALESCE(folded, text) LIKE ? ESCAPE '\\' ORDER BY idx",
+          values: ['%黑%']
+        });
+      })
+      .then(function (hits) {
+        log('like:' + JSON.stringify(hits));
+        if (!hits || hits.length !== 1 || hits[0].idx !== 1 || hits[0].label !== '第一章') {
+          throw new Error('LIKE search mismatch: ' + JSON.stringify(hits));
+        }
+        // UPDATE + DELETE + ORDER DESC + LIMIT
+        return invoke('plugin:turso|execute', { db: DB, query: 'UPDATE probe SET name = ? WHERE id = ?', values: ['renamed', 2] });
+      })
+      .then(function (u) {
+        if (!u || u.rowsAffected !== 1) throw new Error('update mismatch: ' + JSON.stringify(u));
+        return invoke('plugin:turso|select', { db: DB, query: 'SELECT id, name FROM probe ORDER BY id DESC LIMIT 2', values: [] });
+      })
+      .then(function (desc) {
+        log('desc:' + JSON.stringify(desc));
+        if (!desc || desc.length !== 2 || desc[0].id !== 3 || desc[1].name !== 'renamed') {
+          throw new Error('order/limit mismatch: ' + JSON.stringify(desc));
+        }
+        // bookorbit upsert shape
+        return invoke('plugin:turso|execute', {
+          db: DB,
+          query: 'INSERT INTO probe (id, name) VALUES (1, \'conflict\') ON CONFLICT (id) DO UPDATE SET name = excluded.name',
+          values: []
+        });
+      })
+      .then(function (up) {
+        log('upsert:' + JSON.stringify(up));
+        if (!up || up.rowsAffected !== 1) throw new Error('upsert mismatch: ' + JSON.stringify(up));
+        return invoke('plugin:turso|select', { db: DB, query: 'SELECT name FROM probe WHERE id = 1', values: [] });
+      })
+      .then(function (row1) {
+        if (!row1 || row1[0].name !== 'conflict') throw new Error('upsert value mismatch: ' + JSON.stringify(row1));
+        // batch atomicity: failing statement rolls the whole batch back
+        return invoke('plugin:turso|batch', {
+          db: DB,
+          queries: ["UPDATE probe SET name = 'should-rollback' WHERE id = 1", 'INSERT INTO no_such_table VALUES (1)']
+        }).then(function () {
+          throw new Error('bad batch unexpectedly succeeded');
+        }, function (e) {
+          log('batch-rollback-ok');
+          return invoke('plugin:turso|select', { db: DB, query: 'SELECT name FROM probe WHERE id = 1', values: [] });
+        });
+      })
+      .then(function (after) {
+        if (!after || after[0].name !== 'conflict') throw new Error('rollback failed: ' + JSON.stringify(after));
+        return invoke('plugin:turso|get_config', {});
+      })
+      .then(function (c) {
+        if (!c || c.encrypted !== false) throw new Error('config mismatch: ' + JSON.stringify(c));
+        return invoke('plugin:turso|close', { db: DB });
+      })
+      .then(function (ok) {
+        if (ok !== true) throw new Error('close mismatch: ' + JSON.stringify(ok));
+        show('PROBE-OK');
+      })
+      .catch(function (e) {
+        show('PROBE-FAIL :: ' + ((e && e.message) || e));
+      });
+  } catch (e) {
+    show('PROBE-FAIL :: ' + e);
+  }
+}());
+</script></body></html>

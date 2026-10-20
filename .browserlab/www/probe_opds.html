@@ -1,0 +1,208 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>OPDS-PROBE</title>
+</head><body>
+<div id="out" style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto">OPDS-PROBE-PENDING</div>
+<iframe id="app" style="width:412px;height:800px;border:1px solid #ccc"></iframe>
+<script>
+// D8 块B OPDS end-to-end driver: same-origin iframe drives the real /opds
+// route against the Project Gutenberg catalog over the lab bridge
+// (plugin:http fetch chain) and clicks a real book download through
+// download_file -> importBook -> library.json. Headless dump-dom reads the
+// #out markers. Parent deliberately loads NO shim/mock of its own: the
+// iframe page carries the bridge (all exported pages were rewritten).
+(function () {
+  var out = document.getElementById('out');
+  var marks = ['OPDS-PROBE'];
+  function mark(s) {
+    marks.push(s);
+    out.textContent = marks.join('\n');
+  }
+  function frame() { return document.getElementById('app'); }
+  function doc() { return frame().contentDocument; }
+  function win() { return frame().contentWindow; }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function waitFor(fn, timeout, label) {
+    var t0 = Date.now();
+    while (Date.now() - t0 < timeout) {
+      try { var v = fn(); if (v) return v; } catch (e) { /* keep polling */ }
+      await sleep(250);
+    }
+    throw new Error('timeout: ' + label);
+  }
+  function visText(el) { return (el.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function findByText(re) {
+    var d = doc();
+    if (!d || !d.querySelectorAll) return null;
+    // NavigationCard is a div.card with role='none' (not button/a) — include
+    // card containers; clicks bubble to their onClick handlers
+    var els = d.querySelectorAll('button, a, [role="button"], div.card, div[class*="card"]');
+    for (var i = 0; i < els.length; i++) {
+      var t = visText(els[i]);
+      if (t && t.length < 40 && re.test(t) && !els[i].disabled) return els[i];
+    }
+    return null;
+  }
+  function libEntries() {
+    try {
+      var files = JSON.parse(win().localStorage.getItem('labfs_files') || '{}');
+      var lj = files['/lab/files/Readest/Books/library.json'];
+      if (!lj) return [];
+      return JSON.parse(typeof lj === 'string' ? lj : (lj.text || '[]'));
+    } catch (e) { return []; }
+  }
+  function dumpDiag() {
+    try {
+      var cen = (win().__census || []).filter(function (c) {
+        return String(c[0]).indexOf('download') >= 0 || String(c[0]).indexOf('http') >= 0;
+      }).slice(0, 8).map(function (c) { return String(c[0]); });
+      mark('CENSUS: ' + (cen.join(',') || 'none'));
+    } catch (e) { /* cross-frame read guard */ }
+    try {
+      var errs = (win().__errors || []).slice(0, 10);
+      mark('ERRORS: ' + (errs.join(' | ') || 'none'));
+    } catch (e) { /* keep going */ }
+  }
+  function dumpDom() {
+    try {
+      var d = doc();
+      var t = (d && d.body && d.body.innerText || '').replace(/\s+/g, ' ').slice(0, 260);
+      mark('FRAME-URL: ' + (d && d.location ? d.location.href.slice(0, 120) : '?'));
+      mark('BODY: ' + (t || '(empty)'));
+      mark('COUNTS: cards=' + (d ? d.querySelectorAll('div.card').length : 0) +
+        ' figures=' + (d ? d.querySelectorAll('figure').length : 0) +
+        ' h3=' + (d ? d.querySelectorAll('h3').length : 0));
+      var firstCard = d && d.querySelector('div.card');
+      if (firstCard) {
+        mark('FIRST-CARD: ' + firstCard.outerHTML.replace(/\s+/g, ' ').slice(0, 400));
+      }
+      var firstH3 = d && d.querySelector('h3');
+      if (firstH3) {
+        mark('FIRST-H3-CLASS: ' + (firstH3.className || '(none)'));
+      }
+      var btns = d ? d.querySelectorAll('button') : [];
+      var bt = [];
+      for (var bi = 0; bi < btns.length && bt.length < 14; bi++) {
+        var btxt = visText(btns[bi]);
+        if (btxt) bt.push(btxt.slice(0, 24));
+      }
+      mark('BUTTONS: ' + (bt.join(' | ') || '(none)'));
+      var h1 = d ? d.querySelector('h1') : null;
+      mark('H1: ' + (h1 ? visText(h1).slice(0, 60) : '(none)'));
+      var secs = d ? d.querySelectorAll('section, main h2') : [];
+      var sn = [];
+      for (var si = 0; si < secs.length && sn.length < 8; si++) {
+        sn.push((secs[si].className || secs[si].tagName).toString().slice(0, 30));
+      }
+      mark('SECTIONS: ' + (sn.join(' ; ') || '(none)'));
+    } catch (e) {
+      mark('DOM-DUMP-ERR: ' + e);
+    }
+  }
+  async function run() {
+    var CATALOG = 'https://m.gutenberg.org/ebooks.opds/';
+    frame().src = '/opds?url=' + encodeURIComponent(CATALOG);
+    await waitFor(function () {
+      var d = doc();
+      return d && d.readyState === 'complete' &&
+        (d.querySelector('main') || d.querySelector('[class*="opds"]'));
+    }, 25000, 'iframe boot');
+    mark('LOADED');
+    // root feed: subsection navigation (Popular / Latest / Random)
+    var navBtn = await waitFor(function () {
+      var d = doc();
+      if (!d) return null;
+      // feed header must exist (feed parsed + rendered)
+      if (!d.querySelector('.opds-header, h1')) return null;
+      return findByText(/^(Popular|热门|流行|Latest|最新|Random|随机)/);
+    }, 60000, 'root feed render');
+    mark('FEED-NAV: ' + visText(navBtn));
+    navBtn.click();
+    // publication list: gutenberg's search feed lists books as NavigationCards
+    // (click → entry detail feed → PublicationView); take the first card whose
+    // h3 is a book title rather than a catalog section name
+    var NAV_WORDS = /^(Popular|Latest|Random|热门|最新|随机|View All|All Books)/;
+    var pubEl = await waitFor(function () {
+      var d = doc();
+      if (!d || !d.querySelectorAll) return null;
+      var cards = d.querySelectorAll('div.card');
+      for (var i = 0; i < cards.length; i++) {
+        var h3 = cards[i].querySelector('h3');
+        var t = h3 ? visText(h3) : '';
+        if (t && t.length > 3 && !NAV_WORDS.test(t)) return cards[i];
+      }
+      return null;
+    }, 60000, 'publication list');
+    var pubTitle = visText(pubEl).slice(0, 50);
+    mark('LIST-FIRST: ' + pubTitle);
+    pubEl.click();
+    // gutenberg wraps book entries in intermediate feeds (/ebooks/N.opds is a
+    // <feed>, not an <entry>), so drill down until PublicationView shows the
+    // acquisition button (max 3 levels)
+    var dlBtn = null;
+    for (var level = 0; level < 3 && !dlBtn; level++) {
+      dlBtn = await waitFor(function () {
+        return findByText(/^(Download|下载|下載)/);
+      }, 30000, 'download button (level ' + level + ')').catch(function () { return null; });
+      if (dlBtn) break;
+      var next = await waitFor(function () {
+        var d = doc();
+        if (!d || !d.querySelectorAll) return null;
+        var cards = d.querySelectorAll('div.card');
+        for (var i = 0; i < cards.length; i++) {
+          var h3 = cards[i].querySelector('h3');
+          var t = h3 ? visText(h3) : '';
+          if (t && t.length > 3 && !NAV_WORDS.test(t)) {
+            return cards[i];
+          }
+        }
+        return null;
+      }, 10000, 'deeper card').catch(function () { return null; });
+      if (!next) break;
+      pubTitle = visText(next).slice(0, 50);
+      mark('DRILL-' + level + ': ' + pubTitle);
+      next.click();
+    }
+    if (!dlBtn) throw new Error('no download button after drilling');
+    mark('DL-BTN: ' + visText(dlBtn));
+    var before = libEntries().length;
+    var alreadyOwned = /^(Download Again|重新下载|重新下載|Open & Read|打开并阅读)/.test(visText(dlBtn));
+    dlBtn.click();
+    // completion: library grows, or button flips to Open & Read, or toast —
+    // unless the book was ALREADY in the library from a prior run, in which
+    // case the idempotent "Download Again / Open & Read" state itself proves
+    // the earlier download landed in the library
+    await waitFor(function () {
+      if (alreadyOwned) return true;
+      if (libEntries().length > before) return true;
+      var flipped = findByText(/(Open & Read|打开并阅读|打開並閱讀)/);
+      if (flipped) return true;
+      return findByText(/(Download completed|下载完成|下載完成)/);
+    }, 120000, 'download + import');
+    var after = libEntries();
+    var added = after.filter(function (b) { return b && b.title; })
+      .map(function (b) { return (b.title || '') + '#' + (b.hash || ''); });
+    mark('LIB-BEFORE: ' + before + ' LIB-AFTER: ' + after.length);
+    mark('ADDED: ' + (added.slice(Math.max(0, after.length - 3)).join(' ; ') || 'none'));
+    // the downloaded bytes must live in labfs under Books/<hash>/
+    var okBook = false;
+    try {
+      var files2 = JSON.parse(win().localStorage.getItem('labfs_files') || '{}');
+      Object.keys(files2).forEach(function (k) {
+        if (k.indexOf('/lab/files/Readest/Books/') === 0 &&
+            /\.(epub|pdf)/i.test(k) && files2[k] && files2[k].__b64) {
+          okBook = true;
+        }
+      });
+    } catch (e) { /* keep going */ }
+    mark('BOOK-FILE: ' + (okBook ? 'yes' : 'NO'));
+    dumpDiag();
+    var pass = okBook && (after.length > before || alreadyOwned);
+    mark(pass ? 'OPDS-PROBE-PASS' : 'OPDS-PROBE-FAIL');
+  }
+  run().catch(function (e) {
+    mark('OPDS-PROBE-FAIL :: ' + (e && e.message ? e.message : String(e)));
+    dumpDom();
+    dumpDiag();
+  });
+}());
+</script></body></html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<script src="/tauri_shim.js?v=evt1"></script>
+<script src="/mock_bridge.js?v=pick1"></script>
+</head><body><div id="out">READER-PROBE-PENDING</div>
+<script>
+// D5 regression v2 probe: seed the small fixture book and jump straight to
+// the reader route. The headless dump-dom then must contain reading markers
+// (book title + page indicator) — validates the open-book chain cheaply.
+// Hash is deterministic: same file bytes -> same partial md5 (1ee376c4...).
+(function () {
+  var out = document.getElementById('out');
+  function show(s) { out.textContent = s; }
+  fetch('/corpus/repro.epub')
+    .then(function (res) { return res.arrayBuffer(); })
+    .then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var binary = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      var b64 = btoa(binary);
+      var files = {
+        '/lab/files/Readest/Books/1ee376c46ebb5828c72a217e268377f3/Repro_ table-layout cover loop.epub': { __b64: b64 }
+      };
+      // preserve settings.json from earlier sessions so the next plain boot
+      // check doesn't pay a full first-run init (regression v2 stability).
+      // Force language=zh-CN: OPDS/app runs under headless Edge (system en)
+      // flip the stored language to en and break the 第1页 marker.
+      try {
+        var prev = JSON.parse(localStorage.getItem('labfs_files') || '{}');
+        if (prev && prev['/lab/files/settings.json']) {
+          var sj = prev['/lab/files/settings.json'];
+          var s = typeof sj === 'string' ? sj : (sj.text || '');
+          if (s) {
+            var settings = JSON.parse(s);
+            settings.language = 'zh-CN';
+            // the effective UI language knob is globalViewSettings.uiLanguage
+            // (Providers.applyUILanguage falls back to navigator.language
+            // when it is empty — headless Edge is en)
+            if (settings.globalViewSettings &&
+                typeof settings.globalViewSettings === 'object') {
+              settings.globalViewSettings.uiLanguage = 'zh-CN';
+            } else {
+              settings.globalViewSettings = { uiLanguage: 'zh-CN' };
+            }
+            files['/lab/files/settings.json'] = JSON.stringify(settings);
+          }
+        }
+      } catch (e) { /* fresh profile */ }
+      var library = [{
+        hash: '1ee376c46ebb5828c72a217e268377f3',
+        format: 'EPUB',
+        title: 'Repro: table-layout cover loop',
+        sourceTitle: 'Repro_ table-layout cover loop.epub',
+        author: '',
+        filePath: '/lab/files/Readest/Books/1ee376c46ebb5828c72a217e268377f3/Repro_ table-layout cover loop.epub',
+        createdAt: Date.now() - 3600000,
+        updatedAt: Date.now() - 1800000,
+        deletedAt: null,
+        coverImageUrl: null
+      }];
+      files['/lab/files/Readest/Books/library.json'] = JSON.stringify(library);
+      localStorage.setItem('labfs_files', JSON.stringify(files));
+      // language lives in i18next's own localStorage key (detector order:
+      // querystring > localStorage > navigator) — headless Edge's system en
+      // overrides it otherwise and breaks the 第1页 marker
+      localStorage.setItem('i18nextLng', 'zh-CN');
+      localStorage.setItem('labfs_dirs', '["/lab/downloads","/lab/files","/lab/files/Readest","/lab/files/Readest/Books","/lab/files/Readest/Books/1ee376c46ebb5828c72a217e268377f3"]');
+      localStorage.setItem('labdb_files__Readest__Books__1ee376c46ebb5828c72a217e268377f3__search.db', JSON.stringify({ tables: {}, userVersion: 1, seq: {} }));
+      show('READER-PROBE-SEEDED');
+      location.href = '/reader?ids=1ee376c46ebb5828c72a217e268377f3';
+    })
+    .catch(function (e) { show('READER-PROBE-FAIL :: ' + e); });
+}());
+</script></body></html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Readest</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #fafafa; color: #333;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; height: 100vh; gap: 12px; }
+    h1 { font-size: 22px; font-weight: 600; }
+    #status { font-size: 13px; color: #888; font-family: monospace; white-space: pre-wrap;
+              text-align: center; padding: 0 24px; }
+    .ok { color: #2e7d32; } .fail { color: #c62828; }
+  </style>
+</head>
+<body>
+  <h1>Readest for HarmonyOS</h1>
+  <div id="status">shell ready, waiting for frontend build…</div>
+  <script src="tauri_shim.js"></script>
+  <script>
+    // Bridge smoke test: exercises shim -> __ohosBridge -> ArkTS -> back.
+    (function () {
+      var el = document.getElementById('status');
+      if (!window.__TAURI_INTERNALS__) {
+        el.textContent = 'shim missing';
+        el.className = 'fail';
+        return;
+      }
+      window.__TAURI_INTERNALS__.invoke('get_system_color_scheme')
+        .then(function (r) {
+          var line1 = 'invoke OK: color scheme = ' + (r && r.scheme);
+          return window.__TAURI_INTERNALS__.invoke('get_safe_area_insets').then(function (s) {
+            var line2 = 'safe area = ' + JSON.stringify(s);
+            el.innerHTML = line1 + '<br/>' + line2 + '<br/><span class="ok">bridge loop verified</span>';
+          });
+        })
+        .catch(function (e) {
+          el.textContent = 'invoke failed: ' + e;
+          el.className = 'fail';
+        });
+    })();
+  </script>
+</body>
+</html>

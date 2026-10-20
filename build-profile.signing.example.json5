@@ -1,0 +1,28 @@
+// 签名配置参考片段 —— 不要直接替换 build-profile.json5！
+// 明早在 DevEco Studio 里做"自动签名"后，IDE 会把类似内容自动写入
+// build-profile.json5 的 app.signingConfigs，并生成材料到 C:\Users\<你>\.ohos\config\
+// 此文件仅用于了解结构 / 排查签名问题时对照。
+//
+// 前提：entry 模块的 build-profile.json5 中 targets.default 已有
+//       "signingConfig": "default" 与本片段的 "name": "default" 对应（已就绪）。
+
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          // 以下路径为 IDE 自动签名生成后的典型位置（实际以 IDE 写入为准）
+          "certpath": "C:/Users/夏茂钦/.ohos/config/default_ReadestOhos_M5dJXqLYQYQHGmGDoaNXzklhVJlOXXEnBqrDFTlZcEcSvjmWKYSyMYbDFWchRbHc=.cer",
+          "storePassword": "00000019B0B2A5A4F2E4...(IDE加密串,勿手改)",
+          "keyAlias": "debugKey",
+          "keyPassword": "00000019...(IDE加密串,勿手改)",
+          "profile": "C:/Users/夏茂钦/.ohos/config/default_ReadestOhos_M5dJ....p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:/Users/夏茂钦/.ohos/config/default_ReadestOhos_M5dJ....p12"
+        }
+      }
+    ]
+  }
+}
