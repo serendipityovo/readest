@@ -1,5 +1,29 @@
 # PROGRESS.md — 每日块C更新（死循环防护规则8）
 
+## D10 · 2026-10-20（块A/B/C 全部完成）—— 总预演：web 层冻结 + runbook 就绪 + 候选 tag
+
+### 块A：回归 v3 全绿，web 层冻结（D9.5 已提前三断言，本日补总脚本）
+- **scripts/regression_v3.sh**：串联 7 探针（boot/reader/turso/opds_fail/http/tts/opds），真网探针带 1 次重试，结果入 .shots/regression.log
+- **七项全 PASS**：`[boot][reader][turso][opds_fail][http][tts][opds]`——lab 验证体系（70% 工作量层）正式冻结；后续仅真机回归不再改 web 层
+
+### 块B：WARN 处置 + runbook + 候选冻结
+- **ArkTS 编译警告复查**（clean 全量清单）：57→54 条——3 条 `getContext deprecated` **已消解**（`this.getUIContext().getHostContext()`，Index×2 + SelfTest）；剩余 54 条豁免并记录：53 条 "Function may throw"（捕获边界统一在 invoke→reject 前端，语义正确）+ 1 条 WRITE_IMAGEVIDEO（user_grant 可选权限，D13 观察项）
+- **docs/RUNBOOK.md**（真机日手册，核心产物）：D11-D15 每窗口步骤+预期+失败分支全落——含模拟器预攻坚窗口 0、D11 六段流程（插机/签名/版本检查/装机/冒烟/首启攻坚+预案 B socket）、D12 导入链+进度恢复、D13 SelfTest 基线+TTS 锁屏+文件关联端到端、D14 矩阵+三指标、D15 终验+文档定稿
+- **hap 候选版冻结**：git tag `candidate-d10`（提交链 2d7a2f4→4305344→5ffacd1→edc47d1）；.gitignore 补排除 .hvigor 构建缓存
+
+### 块C：风险清单冻结 + 停靠复诊（完成）
+- 风险→窗口→预案编号总表（RUNBOOK 附表，冻结版）：KI-1→D13（native 降级预案）、KI-2→D13（观察）、KI-3/KI-4/KI-6→设备不受影响（维持）、KI-5→D11 窗口F（双修法+预案B）、API<26→预案A、签名失败→手工证书/模拟器接力、azw3 缺→D14 转换或降级记录
+- 停靠项复诊：无新增停靠；KI-2/KI-3 维持降级判定（设备端不受影响的 lab-only 项）
+- 无三振；块B runbook 编写一次成型
+
+### 里程碑达成
+✅ 真机日 runbook 就绪 ✅ 风险清单冻结 ✅ web 层全绿冻结 ✅ 候选版 tag——**D11 起进入真机窗口期**
+
+### 给 D11 的输入
+- 先跑 RUNBOOK 窗口 0（模拟器预攻 KI-5）再进用户到场段
+- 用户到场 55 分钟流程：插机(10) → 签名(15) → 版本检查(2) → 装机(5) → 冒烟(3) → 剩余攻坚
+- 观察通道：`hilog | grep -E "ARKWEB-CONSOLE|JSAPP"`；SelfTest 入口 `--ps selftest 1`
+
 ## D9.5 · 2026-10-20（全量验证轮）—— D1-D9 盘点：v3 断言三绿 + census 审计补 1 缺口
 
 ### 验证内容（用户指令：全部内容和功能验证、查遗漏）
