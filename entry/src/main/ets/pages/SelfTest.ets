@@ -102,7 +102,7 @@ struct SelfTest {
   ];
 
   aboutToAppear(): void {
-    const context = getContext(this) as common.UIAbilityContext;
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     nativeBridge.setContextForTest(context);
     const initial: RowState[] = [];
     for (let i = 0; i < this.cases.length; i++) {

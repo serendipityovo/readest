@@ -17,7 +17,7 @@ struct Index {
 
   aboutToAppear(): void {
     webview.WebviewController.initializeWebEngine();
-    const context = getContext(this) as common.UIAbilityContext;
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     this.fileServer = new RawFileServer(context);
     nativeBridge.setController(this.controller, context);
     this.fileServer.extractIfNeeded((done: number, total: number): void => {
@@ -90,7 +90,7 @@ struct Index {
   }
 
   private setupBridge(): void {
-    const context = getContext(this) as common.UIAbilityContext;
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     nativeBridge.setController(this.controller, context);
     try {
       // must run before the first load so window.__ohosBridge exists on the page
