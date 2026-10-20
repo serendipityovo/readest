@@ -25,3 +25,6 @@ entry/src/main/resources/rawfile/frontend/
 .shots/
 *.log
 .DS_Store
+
+# hvigor 构建缓存/报告
+.hvigor/
