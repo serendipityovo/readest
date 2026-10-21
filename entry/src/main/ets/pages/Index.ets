@@ -47,6 +47,26 @@ struct Index {
           .onControllerAttached(() => {
             this.setupBridge();
           })
+          .onPageEnd(() => {
+            // KI-5 诊断：文档加载完成后探测 shim 全局形状（console 经
+            // onConsole → hilog，模拟器/真机通用的观察通道）；
+            // unhandledrejection 打印堆栈定位 metadata/os_type 错误现场
+            try {
+              this.controller.runJavaScript(
+                "window.addEventListener('unhandledrejection', function(e){" +
+                "var r=e&&e.reason;" +
+                "console.log('[KI5-REJ]', r&&(r.stack||r.message||String(r)).slice(0,300));});" +
+                "window.addEventListener('error', function(e){" +
+                "console.log('[KI5-ERR]', e&&e.message, '@', e&&e.filename, ':', e&&e.lineno);});" +
+                "var I=window.__TAURI_INTERNALS__;" +
+                "console.log('[KI5]', JSON.stringify({" +
+                "internals:!!I, metadata:!!(I&&I.metadata)," +
+                "invoke:!!(I&&I.invoke), os:!!window.__TAURI_OS_PLUGIN_INTERNALS__," +
+                "bridge:!!window.__ohosBridge, ua:navigator.userAgent.slice(0,40)}));");
+            } catch (e) {
+              console.error(`[ReadestOhos] ki5 probe failed: ${JSON.stringify(e)}`);
+            }
+          })
           .onInterceptRequest((event) => {
             if (event && event.request && this.fileServer) {
               const url: string = event.request.getRequestUrl();

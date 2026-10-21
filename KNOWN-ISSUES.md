@@ -22,13 +22,19 @@
 - OPDS 下载入库后每本书 ~1MB b64 存 localStorage（配额 ~5MB）；多本下载会逼近上限（quota 抛出时 saveFiles 静默吞错）
 - 设备端无此问题（真实文件系统）；若 D9+ 需 lab 批量下载场景，换 IndexedDB 或探针前清理
 
-### KI-5 模拟器首启前端早期 TypeError 群 + file:// fetch ERR_FAILED（D11 攻坚域，D9 新档）
-- **现象**（模拟器 hilog ARKWEB-CONSOLE，启动 1-2s 窗口）：`Cannot read properties of null (reading 'error'/'height')`、`reading 'invoke'`、`reading 'os_type'`、`reading 'metadata'` ×5+——疑似 shim 就绪时序或某资源加载失败级联；后续 SelfTest 60/62 通过说明桥后来全通
-- **file:// fetch ERR_FAILED**：shared-intent 文件导入链的最后一步（importBook 读 file:// uri）——ArkWeb 对 file:// 的 fetch 限制
-- **归属**：计划 D11 预定攻坚域（"真实前端首启攻坚：拦截时机/proxy 注册/CSP——预案B 本地 socket 加载备选"）；修复方向：RawFileServer 拦截 file:// 转 fs，或前端导入路径走桥读取
-- **观察工具**：`hilog | grep ARKWEB-CONSOLE`（前端 console 全量；模拟器/真机通用）
+### KI-5 首启 TypeError 群 + file:// 导入链（D10.5 预攻：主因已修，残余打包 D11）
+- **已修（模拟器实证）**：①**dispatch 双命名风格统一**——42 个带 `plugin:native-bridge|` 前缀 case 与 27 个裸名 case 并存，裸名 case 对带前缀到达的命令**全部失配返回 null**，致首启 `null.available/null.height/null.error` TypeError 群（lab mock 用带前缀全名表所以 lab 零此象；SelfTest 的"非 THROW"判定掩盖 null 应答）。修复=dispatch 入口剥前缀 + 全部 case 统一裸名 → **首启 TypeError 群消零**（新进程 console 仅语言切换日志）②fsPath 剥 `file://` 前缀（importBook→NativeFile 路径）③index.html pre-script 兜底 `__TAURI_INTERNALS__.metadata`（防御性）
+- **残余（D11 真机窗口攻，工具=DevEco webview devtools）**：①`Cannot read properties of undefined (reading 'metadata')`（堆栈 E=getCurrentWindow←subscribeSettingsSync 的 M）与 `reading 'os_type'`（app service init）**偶发于 onPageEnd 探针确认 internals 在位之后**——pre 兜底未治，疑似更早瞬态或另一上下文，hilog 拼图已到极限，devtools 现场调试优先②file:// SEND 导入未落盘（Open with book 后 metadata 错误中断 ingestFile 链）
+- **观察工具**：`hilog | grep ARKWEB-CONSOLE`；Index.ets onPageEnd 已内置 [KI5] 全局探针 + unhandledrejection 堆栈探针（KI5-REJ）
+
+### KI-7 模拟器 @ohos.net.http 对外网 https 挂起（D10.5 观察项，D11 真机重验）
+- 现象：SelfTest 的 download_file（gutenberg https）在模拟器上 `request()` 挂起（100s+ 无 resolve/reject）；同机 ping/DNS 正常（284ms）、ArkWeb 浏览器栈正常——**仅系统 http API 层挂**
+- 排除：非我们代码问题（fetch/download 逻辑 lab 全验证 + 设备编译过）；嫌疑=模拟器系统 CA/TLS 环境（WHPX 镜像）
+- 处置：D11 真机网络栈重验 SelfTest 网络组；真机若通则模拟器专属环境问题（记录即可）；真机也挂才按 bug 攻（预案：readTimeout 已设 300s/连接 15s——真挂会超时 throw 而非永挂）
+- SelfTest 网络组现状：fetch 用例 SKIP（rid 接力说明）+ download_file 用例（真网+真写盘，模拟器基线=挂起观察中）
 
 ### KI-6 mock read_file 大书性能（lab-only，D10 验证轮发现）
+
 - 红楼梦 1.1MB EPUB 经 mock read_file 返回 ~4MB JSON 字节数组——reader 渲染超时，TTS 取句失败（metadata 更新后立即 stop，speak 从未发出）；Repro 小书全链正常
 - 设备端 read_file 走真实 fs（无此问题）；lab 大书场景（>500KB）暂用小书语料，若需 lab 大书回归再优化 mock 传输（二进制直传替代 JSON 数组）
 - 附带发现：**虚拟时间下 TTS 探针方法论**——长书朗读会无限消耗虚拟时间预算（dump-dom 不 settle），探针必须"达标即停"（再发 't' 关闭）；引擎探测链（Edge 失败→native init→首句）需 10s+ 窗口，过短的复查窗口会把已开启的播放误关

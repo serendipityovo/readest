@@ -97,6 +97,8 @@ export class NativeBridge {
   private pendingIntent: SharedIntentPayload | null = null;
   private lastIntentKey: string = '';
   private lastIntentAt: number = 0;
+  // KI-5 诊断：reqId -> cmd（resolve 打点用）
+  private reqCmds: Map<number, string> = new Map();
   // plugin:deep-link|get_current：冷启动 URL 整个会话重复返回（dist-js 契约
   // "keeps returning the launch URL"）；与 shared-intent 补投并存——前端
   // markLaunchUrl 对两条路径做去重（readest #6104 语义）
@@ -239,6 +241,8 @@ export class NativeBridge {
 
   /** Entry point registered into the web page as window.__ohosBridge.invoke */
   invoke(cmd: string, reqId: number, payloadJson: string, headersJson: string = 'null'): void {
+    hilog.info(0x0107, 'readestD9', 'invoke req=%{public}d cmd=%{public}s', reqId, cmd.slice(0, 60));
+    this.reqCmds.set(reqId, cmd);
     let args: Record<string, Object> = {};
     try {
       const parsed: Record<string, Object> = JSON.parse(payloadJson);
@@ -278,7 +282,12 @@ export class NativeBridge {
   }
 
   private resolve(reqId: number, ok: boolean, json: string): void {
+    const cmdTag: string = this.reqCmds.get(reqId) ?? '?';
+    this.reqCmds.delete(reqId);
+    hilog.info(0x0107, 'readestD9', 'resolve req=%{public}d ok=%{public}s cmd=%{public}s json=%{public}s',
+      reqId, String(ok), cmdTag.slice(0, 44), json.slice(0, 40));
     if (!this.controller) {
+      hilog.warn(0x0107, 'readestD9', 'resolve dropped (no controller) req=%{public}d ok=%{public}s', reqId, String(ok));
       return;
     }
     const escaped: string = JSON.stringify(json);
@@ -287,6 +296,7 @@ export class NativeBridge {
       this.controller.runJavaScript(script);
     } catch (e) {
       // page may not be ready yet; drop silently
+      hilog.warn(0x0107, 'readestD9', 'resolve runJavaScript threw req=%{public}d', reqId);
     }
   }
 
@@ -311,6 +321,8 @@ export class NativeBridge {
   }
 
   private async dispatch(cmd: string, args: Record<string, Object>): Promise<Object | null> {
+    hilog.info(0x0107, 'readestD9', 'dispatch cmd=%{public}s len=%{public}d last=%{public}d',
+      cmd.slice(0, 60), cmd.length, cmd.length > 0 ? cmd.charCodeAt(cmd.length - 1) : 0);
     // plugin-listener registration is uniform across plugins (Channel id)
     if (cmd.endsWith('|register_listener')) {
       const plugin: string = cmd.split('|')[0].replace('plugin:', '');
@@ -355,7 +367,13 @@ export class NativeBridge {
       }
       return null;
     }
-    switch (cmd) {
+    // KI-5 根因修复：native-bridge 命令双命名风格统一——历史 case 一批裸名
+    // （D2-D6）一批带前缀（D7+），带前缀到达的裸名 case 全部失配返回 null，
+    // 曾致首启 TypeError 群（has_ambient .available / status_bar .height…）。
+    // 统一为裸名匹配（与 lab mock 的透传语义对齐由 mock 侧双写保证）。
+    const bareCmd: string = cmd.startsWith('plugin:native-bridge|')
+      ? cmd.substring('plugin:native-bridge|'.length) : cmd;
+    switch (bareCmd) {
       // ---- plugin:deep-link（冷启动 URL 查询；census 实测开书会话 ×3）----
       case 'plugin:deep-link|get_current': {
         return this.deepLinkLaunchUrls;
@@ -456,10 +474,11 @@ export class NativeBridge {
       }
       case 'has_ambient_light_sensor': {
         // OHOS phones expose the ILLUMINANCE sensor (start/stop below)
+        hilog.info(0x0107, 'readestD9', 'has_ambient_light_sensor called');
         const result: AmbientSensorResult = { available: true };
         return result;
       }
-      case 'plugin:native-bridge|get_sync_passphrase': {
+      case 'get_sync_passphrase': {
         // contract: {passphrase?, error?} — Asset Kit backs the keychain
         const value = await this.assetGet('sync-passphrase');
         const result: SyncPassphraseResult = { passphrase: value, error: null };
@@ -502,19 +521,19 @@ export class NativeBridge {
         // Android relays webview settings; ArkWeb is configured on the component
         return null;
       }
-      case 'plugin:native-bridge|is_sync_keychain_available': {
+      case 'is_sync_keychain_available': {
         // boot gate (bridge.ts:493): {available} — Asset Kit backs the keychain
         const result: KeychainAvailableResult = { available: true };
         return result;
       }
-      case 'plugin:native-bridge|get_bookshelf_widget_instances':
-      case 'plugin:native-bridge|get_reading_widget_instances': {
+      case 'get_bookshelf_widget_instances':
+      case 'get_reading_widget_instances': {
         // contract: {instances} is destructured by the frontend — null throws;
         // OHOS service widgets are a post-parity enhancement, answer empty
         const result: WidgetInstancesResult = { instances: [] };
         return result;
       }
-      case 'plugin:native-bridge|copy_uri_to_path': {
+      case 'copy_uri_to_path': {
         // SAF/picker flow (nativeAppService openFile): copy a picked uri into
         // the sandbox. OHOS pickers return file:// URIs (no content:// scheme
         // exists); unsupported schemes answer success:false so the caller can
@@ -878,6 +897,8 @@ export class NativeBridge {
       case 'download_file': {
         const dlUrl: string = String(args['url'] ?? '');
         const dlPath: string = this.normalizePath(String(args['filePath'] ?? ''));
+        hilog.info(0x0107, 'readestD9', 'download_file url=%{public}s path=%{public}s',
+          dlUrl.slice(0, 60), dlPath.slice(0, 70));
         const dlHeaderRec: Record<string, string> = {};
         const dlHeaders: Object | undefined = args['headers'];
         if (dlHeaders !== undefined && dlHeaders !== null) {
@@ -917,6 +938,7 @@ export class NativeBridge {
         const dlBytes: Uint8Array = dlRsp.result instanceof ArrayBuffer
           ? new Uint8Array(dlRsp.result as ArrayBuffer)
           : new util.TextEncoder().encodeInto(String(dlRsp.result ?? ''));
+        hilog.info(0x0107, 'readestD9', 'download_file done code=%{public}d bytes=%{public}d', dlRsp.responseCode, dlBytes.length);
         this.fsEnsureDir(this.parentDir(dlPath));
         this.fsWriteBytes(dlPath, dlBytes);
         if (progressCh >= 0) {
@@ -1010,7 +1032,7 @@ export class NativeBridge {
       }
 
       // ---- native-bridge: pickers / storage / sensors ----
-      case 'plugin:native-bridge|show_file_picker': {
+      case 'show_file_picker': {
         // fire-and-forget: results arrive as file-picker-result{uris}
         try {
           const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
@@ -1025,7 +1047,7 @@ export class NativeBridge {
         }
         return null;
       }
-      case 'plugin:native-bridge|select_directory': {
+      case 'select_directory': {
         try {
           const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
           const uris: Array<string> = await docPicker.select({
@@ -1043,7 +1065,7 @@ export class NativeBridge {
           return cancelled;
         }
       }
-      case 'plugin:native-bridge|save_image_to_gallery': {
+      case 'save_image_to_gallery': {
         // API12 write path: MediaAssetChangeRequest.createImageAssetRequest
         // takes the sandbox file straight into the user gallery
         const p2: Record<string, Object> = this.payloadOf(args);
@@ -1062,18 +1084,18 @@ export class NativeBridge {
           return result;
         }
       }
-      case 'plugin:native-bridge|set_sync_passphrase': {
+      case 'set_sync_passphrase': {
         const p3: Record<string, Object> = this.payloadOf(args);
         await this.assetPut('sync-passphrase', String(p3['passphrase'] ?? ''));
         const result: SyncPassphraseSetResult = { success: true };
         return result;
       }
-      case 'plugin:native-bridge|clear_sync_passphrase': {
+      case 'clear_sync_passphrase': {
         await this.assetRemove('sync-passphrase');
         const result: SyncPassphraseSetResult = { success: true };
         return result;
       }
-      case 'plugin:native-bridge|start_ambient_light_updates': {
+      case 'start_ambient_light_updates': {
         // lux pushes ride the 'ambient-light' Channel event (themeStore)
         try {
           if (!this.ambientOn) {
@@ -1090,7 +1112,7 @@ export class NativeBridge {
           return result;
         }
       }
-      case 'plugin:native-bridge|stop_ambient_light_updates': {
+      case 'stop_ambient_light_updates': {
         try {
           sensor.off(sensor.SensorId.AMBIENT_LIGHT);
           this.ambientOn = false;
@@ -1101,73 +1123,73 @@ export class NativeBridge {
           return result;
         }
       }
-      case 'plugin:native-bridge|checkPermissions':
-      case 'plugin:native-bridge|request_manage_storage_permission': {
+      case 'checkPermissions':
+      case 'request_manage_storage_permission': {
         // OHOS apps live in a sandbox: shared-storage access is not a permission
         const result: PermissionsResult = { manageStorage: 'granted' };
         return result;
       }
-      case 'plugin:native-bridge|get_external_sdcard_path': {
+      case 'get_external_sdcard_path': {
         const result: SdCardResult = { path: null };
         return result;
       }
 
       // ---- native-bridge: platform-specific, degraded with correct shapes ----
-      case 'plugin:native-bridge|auth_with_custom_tab':   // Chrome Custom Tabs (Android)
-      case 'plugin:native-bridge|auth_with_safari': {     // ASWebAuthenticationSession (iOS)
+      case 'auth_with_custom_tab':   // Chrome Custom Tabs (Android)
+      case 'auth_with_safari': {     // ASWebAuthenticationSession (iOS)
         const r: SuccessResult = { success: false };
         return r;
       }
-      case 'plugin:native-bridge|iap_is_available': {
+      case 'iap_is_available': {
         const r: KeychainAvailableResult = { available: false };
         return r;
       }
-      case 'plugin:native-bridge|iap_initialize':
-      case 'plugin:native-bridge|iap_fetch_products':
-      case 'plugin:native-bridge|iap_purchase_product':
-      case 'plugin:native-bridge|iap_restore_purchases': {
+      case 'iap_initialize':
+      case 'iap_fetch_products':
+      case 'iap_purchase_product':
+      case 'iap_restore_purchases': {
         return null;
       }
-      case 'plugin:native-bridge|icloud_container_status': {
+      case 'icloud_container_status': {
         const result: ICloudStatusResult = { available: false };
         return result;
       }
-      case 'plugin:native-bridge|icloud_ensure_downloaded': {
+      case 'icloud_ensure_downloaded': {
         const st: StatusResult = { status: 'notFound' };
         return st;
       }
-      case 'plugin:native-bridge|query_pen_capabilities': {
+      case 'query_pen_capabilities': {
         const result: PenCapsResult = { isBoox: false, rawDrawing: false };
         return result;
       }
-      case 'plugin:native-bridge|start_raw_drawing':
-      case 'plugin:native-bridge|stop_raw_drawing':
-      case 'plugin:native-bridge|refresh_eink_screen': {
+      case 'start_raw_drawing':
+      case 'stop_raw_drawing':
+      case 'refresh_eink_screen': {
         const result: EinkResult = { success: false };
         return result;
       }
-      case 'plugin:native-bridge|capture_webview_region':
-      case 'plugin:native-bridge|cover_webview_region':
-      case 'plugin:native-bridge|uncover_webview_region': {
+      case 'capture_webview_region':
+      case 'cover_webview_region':
+      case 'uncover_webview_region': {
         const r: SuccessResult = { success: false };
         return r;
       }
-      case 'plugin:native-bridge|install_package': {
+      case 'install_package': {
         const r: SuccessResult = { success: false };
         return r;
       }
       // no-ops on OHOS: no multicast lock / key interception / lookup popovers
-      case 'plugin:native-bridge|set_multicast_lock':
-      case 'plugin:native-bridge|intercept_keys':
-      case 'plugin:native-bridge|set_selection_suppressed':
-      case 'plugin:native-bridge|read_share_clip_html':
-      case 'plugin:native-bridge|show_lookup_popover':
-      case 'plugin:native-bridge|get_lookup_dictionary':
-      case 'plugin:native-bridge|clear_lookup_dictionary':
-      case 'plugin:native-bridge|set_bookshelf_widget_catalog':
-      case 'plugin:native-bridge|set_reading_widget_catalog':
-      case 'plugin:native-bridge|update_bookshelf_widget':
-      case 'plugin:native-bridge|update_reading_widget': {
+      case 'set_multicast_lock':
+      case 'intercept_keys':
+      case 'set_selection_suppressed':
+      case 'read_share_clip_html':
+      case 'show_lookup_popover':
+      case 'get_lookup_dictionary':
+      case 'clear_lookup_dictionary':
+      case 'set_bookshelf_widget_catalog':
+      case 'set_reading_widget_catalog':
+      case 'update_bookshelf_widget':
+      case 'update_reading_widget': {
         return null;
       }
 
@@ -1215,6 +1237,11 @@ export class NativeBridge {
 
   /** Resolve an fs-plugin call to an absolute sandbox path. */
   private fsPath(args: Record<string, Object>): string {    let p: string = String(args['path'] ?? '');
+    // KI-5 file:// 导入链：shared-intent 送来的 uri 带 file:// 前缀，
+    // fileIo 需要纯路径（openFile→NativeFile 分支不剥前缀）
+    if (p.startsWith('file://')) {
+      p = p.substring('file://'.length);
+    }
     const opts: Object | undefined = args['options'];
     if (opts !== undefined) {
       try {

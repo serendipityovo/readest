@@ -98,7 +98,11 @@ struct SelfTest {
     // ---- localsend / clipboard ----
     { group: '其他', cmd: 'localsend_start', args: '' },
     { group: '其他', cmd: 'localsend_is_alive', args: '' },
-    { group: '其他', cmd: 'plugin:clipboard-manager|write_text', args: '{"text":"readest 自测"}' }
+    { group: '其他', cmd: 'plugin:clipboard-manager|write_text', args: '{"text":"readest 自测"}' },
+    // ---- 网络族（D10.5 增：设备侧 @ohos.net.http 真网核销）----
+    { group: '网络', cmd: 'plugin:http|fetch', args: '{"clientConfig":{"method":"GET","url":"https://www.gutenberg.org/ebooks.opds/","headers":[["User-Agent","Readest/1.0"]]}}',
+      skip: '返回 rid 需 fetch_send 接力，D13 真机手测链路' },
+    { group: '网络', cmd: 'download_file', args: '{"url":"https://www.gutenberg.org/ebooks/1342.epub.noimages","filePath":"/data/app/el2/100/base/com.readest.app/haps/entry/files/opds_selftest.epub","headers":{"User-Agent":"Readest/1.0 (OPDS Browser)"}}' }
   ];
 
   aboutToAppear(): void {

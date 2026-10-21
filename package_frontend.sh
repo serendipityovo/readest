@@ -32,14 +32,21 @@ cp -r "$PDFJS/standard_fonts" "$RAW_DIR/vendor/pdfjs/standard_fonts"
 test -s "$RAW_DIR/vendor/pdfjs/pdf.worker.min.mjs" || { echo "FATAL: pdf.worker.min.mjs missing"; exit 1; }
 
 echo "[5/6] injecting shim tag into index.html..."
-python - <<'EOF' 2>/dev/null || sed -i 's#<head>#<head><script src="/tauri_shim.js"></script>#' "/d/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/index.html"
+python - <<'EOF' 2>/dev/null || sed -i 's#<head>#<head><script>window.__TAURI_INTERNALS__=window.__TAURI_INTERNALS__||{metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"},windows:["main"],webviews:["main"]}};</script><script src="/tauri_shim.js"></script>#' "/d/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/index.html"
 import io
 p = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/index.html"
 s = io.open(p, encoding="utf-8").read()
 tag = '<script src="/tauri_shim.js"></script>'
+# KI-5 防御：早于 shim 执行的 chunk 读 internals.metadata 时兜底
+# （getCurrentWindow 的 E() 在冷启动 hook 挂载即调；shim 随后整体覆盖）
+pre = ('<script>window.__TAURI_INTERNALS__=window.__TAURI_INTERNALS__'
+       '||{metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"},'
+       'windows:["main"],webviews:["main"]}};</script>')
 if tag not in s:
-    s = s.replace("<head>", "<head>" + tag, 1)
-    io.open(p, "w", encoding="utf-8").write(s)
+    s = s.replace("<head>", "<head>" + pre + tag, 1)
+elif pre not in s:
+    s = s.replace(tag, pre + tag, 1)
+io.open(p, "w", encoding="utf-8").write(s)
 print("injected")
 EOF
 

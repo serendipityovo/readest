@@ -1,5 +1,33 @@
 # PROGRESS.md — 每日块C更新（死循环防护规则8）
 
+## D10.5 · 2026-10-21（无真机工作清尾）—— KI-5 预攻重大战果 + 四项准备物补齐
+
+### ① KI-5 预攻（RUNBOOK 窗口 0，模拟器）
+- **根因抓到并修复：dispatch 双命名风格**——42 个带 `plugin:native-bridge|` 前缀 case 与 27 个裸名 case 并存，裸名 case 对带前缀到达的命令**全部失配返回 null** → 首启 `null.available/null.height/null.error` TypeError 群（lab mock 用带前缀全名表所以 lab 零此象；**SelfTest 的"非 THROW"判定掩盖了 null 应答**——null 也是非 THROW）。修复=dispatch 入口剥前缀 + 43 个 case 统一裸名 → **首启 TypeError 群消零**（新进程 console 仅语言日志，模拟器实证）
+- 顺带修复：fsPath 剥 `file://` 前缀（importBook→NativeFile 链）；index.html 注入 `__TAURI_INTERNALS__.metadata` pre-script 兜底（package_frontend.sh 增）
+- 诊断工具沉淀：NativeBridge invoke/dispatch/resolve 三级 hilog 打点（readestD9 域）+ Index.ets onPageEnd 探针（[KI5] 全局形状 + [KI5-REJ] unhandledrejection 堆栈）——**hilog 拼图法把根因从"疑似 ArkWeb 时序"收敛到"纯命名 bug"**
+- **残余停靠（两小时规则）**：`metadata/os_type` 瞬态 undefined（onPageEnd 探针确认 internals 在位后仍偶发；pre 兜底未治；堆栈定位到 getCurrentWindow←subscribeSettingsSync）+ file:// SEND 导入未落盘——打包 D11 真机（工具升级：DevEco webview devtools 现场调试）
+- SelfTest 复跑 60/62 → 统一修复**零破坏**
+
+### ② BUILD.md（D15 文档四件套补缺）
+九节全量构建配方：前端构建→打包（含 KI-5 pre-script 注入）→HAP 构建（警告基线 54 豁免）→装机→一条龙→签名→实验室→模拟器→常见坑（含 git rm 参数序、lab SSL 重启、增量构建警告盲区）
+
+### ③ D14 语料补齐
+GBK TXT（王国维三境界，349B GBK 编码）+ 竖排 EPUB（writing-mode:vertical-rl，日文+中文，1.9KB）自制；**azw3_sample.azw3 发现早已有**（D6 448KB）——语料库 10 本全格式
+
+### ④ 模拟器冷启预测 + 网络组增补
+- **冷启 PASS**：force-stop→首帧 1.0s→前端就绪 3.2s（<5s 达标线；hilog 时间戳法）
+- **SelfTest 增网络组**（64 用例）：plugin:http|fetch（SKIP：rid 接力说明）+ download_file（gutenberg 真网真写盘）
+- **KI-7 新档**：模拟器 @ohos.net.http 对外网 https **挂起**（ping/DNS 通、ArkWeb 栈通、仅系统 http API 挂；嫌疑模拟器 CA/TLS 环境）——D11 真机重验，非代码问题（lab 逻辑全验证）
+
+### 回归
+- lab 回归 v3 七项全 PASS（全部改动后零回归）
+- 模拟器 SelfTest 60/64 非 THROW + 3 SKIP
+
+### 给 D11 的输入（更新）
+- **首启攻坚重点转移**：TypeError 群已修——D11 剩 metadata/os_type 瞬态 + file:// 落盘 + 真机网络组重验（KI-7）——全部有 devtools 现场调试手段
+- SelfTest 已扩到 64 用例（真机基线预期 ≥60）
+
 ## D10 · 2026-10-20（块A/B/C 全部完成）—— 总预演：web 层冻结 + runbook 就绪 + 候选 tag
 
 ### 块A：回归 v3 全绿，web 层冻结（D9.5 已提前三断言，本日补总脚本）
