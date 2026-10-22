@@ -28,3 +28,6 @@ entry/src/main/resources/rawfile/frontend/
 
 # hvigor 构建缓存/报告
 .hvigor/
+
+.idea/
+artifacts/

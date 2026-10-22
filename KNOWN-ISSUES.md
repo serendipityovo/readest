@@ -27,11 +27,11 @@
 - **残余（D11 真机窗口攻，工具=DevEco webview devtools）**：①`Cannot read properties of undefined (reading 'metadata')`（堆栈 E=getCurrentWindow←subscribeSettingsSync 的 M）与 `reading 'os_type'`（app service init）**偶发于 onPageEnd 探针确认 internals 在位之后**——pre 兜底未治，疑似更早瞬态或另一上下文，hilog 拼图已到极限，devtools 现场调试优先②file:// SEND 导入未落盘（Open with book 后 metadata 错误中断 ingestFile 链）
 - **观察工具**：`hilog | grep ARKWEB-CONSOLE`；Index.ets onPageEnd 已内置 [KI5] 全局探针 + unhandledrejection 堆栈探针（KI5-REJ）
 
-### KI-7 模拟器 @ohos.net.http 对外网 https 挂起（D10.5 观察项，D11 真机重验）
-- 现象：SelfTest 的 download_file（gutenberg https）在模拟器上 `request()` 挂起（100s+ 无 resolve/reject）；同机 ping/DNS 正常（284ms）、ArkWeb 浏览器栈正常——**仅系统 http API 层挂**
-- 排除：非我们代码问题（fetch/download 逻辑 lab 全验证 + 设备编译过）；嫌疑=模拟器系统 CA/TLS 环境（WHPX 镜像）
-- 处置：D11 真机网络栈重验 SelfTest 网络组；真机若通则模拟器专属环境问题（记录即可）；真机也挂才按 bug 攻（预案：readTimeout 已设 300s/连接 15s——真挂会超时 throw 而非永挂）
-- SelfTest 网络组现状：fetch 用例 SKIP（rid 接力说明）+ download_file 用例（真网+真写盘，模拟器基线=挂起观察中）
+### KI-7 @ohos.net.http 对外网 https 挂起（D11 真机重验：复现，根因改判网络环境）
+- 现象：download_file（gutenberg https）模拟器与**真机同象**——`request()` 无 resolve/reject、无超时回调；真机首启 ArkWeb 亦报 `ERR_CERT_COMMON_NAME_INVALID`
+- **D11 结论**：非平台 http 栈问题——两个独立证据（系统 http API 挂 + ArkWeb 证书报错）指向**网络环境对 gutenberg.org 不可达/证书劫持**；lab 侧 fetch/download 逻辑全验证
+- 处置：D12 download_file 用例加超时判定（15s 判 FAIL 不永挂）+ 换国内可达 URL（如清华镜像文件）复测——若可达则 KI-7 关闭（纯 gutenberg 不可达），若仍挂才按平台 bug 攻
+- SelfTest 网络组现状：fetch 用例 SKIP（rid 接力说明）+ download_file 用例（真网+真写盘）
 
 ### KI-6 mock read_file 大书性能（lab-only，D10 验证轮发现）
 

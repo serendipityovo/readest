@@ -1,5 +1,26 @@
 # PROGRESS.md — 每日块C更新（死循环防护规则8）
 
+## D11 · 2026-10-22（真机窗口日）—— 首启验收通过 + SelfTest 真机基线达成
+
+### ① 真机链路打通（全流程）
+插机（用户）→ 预案 A 降级（compatibleSdkVersion **"6.1.0(23)"**〔5.1.1 是 API19 写错会 mismatch〕+ deviceTypes +2in1）→ DevEco 自动签名材料落盘（`~/.ohos/config/default_ReadestOhos_*.{cer,p12,p7b}`，UI 报"无法获取用户团队信息"但**材料已生成**）→ **手写 build-profile.json5 signingConfigs 绕过团队校验**（SignHap 4.7s）→ 签名包 `install bundle successfully`（MateBook Pro HAD-W24，API23）——坑：9568297 older sdk version=签名时 compatible 还是临时 26 值，改回 6.1.0(23) 重建即过
+
+### ② 首启验收：RUNBOOK "首页稳定渲染" 通过
+- **[KI5] 探针全绿**：`{"internals":true,"metadata":true,"invoke":true,"os":true,"bridge":true,"ua":"Mozilla/5.0 (PC; OpenHarmony 6.1)"}`——**D10.5 停靠的 metadata/os_type 瞬态 undefined 真机未复现**，无 KI5-REJ/KI5-ERR（零未捕获异常）
+- **invoke/dispatch 各 44 次正常启动序列**（read_text_file×9、register_listener×6、deep-link get_current×4、system_ui/safe_area 等）
+- **截屏确认**：空书架引导页完整渲染（"开启你的书库"+导入按钮+搜索栏，中英文正常，无白屏/乱码/错位）
+- RawFileServer 真机解包正常：files/frontend/ 25 项 + Readest/ 数据目录 + settings.json 落盘
+
+### ③ SelfTest 真机基线：60/64 非 THROW + 3 SKIP
+与模拟器基线一致（≥60 达标）；可见用例全绿无红 FAIL
+
+### ④ KI-7 真机重验：**挂起复现，根因改判为网络环境**
+download_file（gutenberg.org https）真机同样无响应（无 done 打点、文件未落盘）；且首启 ArkWeb 亦报 `ERR_CERT_COMMON_NAME_INVALID`——**指向网络环境对 gutenberg.org 不可达/证书劫持（GFW/代理），非平台 http 栈问题**（模拟器与真机同象同因）。D12 处置：download_file 用例加超时判定（不永挂）+ 换国内可达 URL 复测区分
+- 附带：NativeTts listVoices 401（在线语音列表，华为云 API 权限/网络）——离线语音待 D13 真机核销
+
+### ⑤ git
+`签名配置 + compatibleSdkVersion 修正 + .gitignore(.idea/artifacts)`；截图存 artifacts/d11/（不入库）
+
 ## D10.5 · 2026-10-21（无真机工作清尾）—— KI-5 预攻重大战果 + 四项准备物补齐
 
 ### ① KI-5 预攻（RUNBOOK 窗口 0，模拟器）
