@@ -1,5 +1,23 @@
 # PROGRESS.md — 每日块C更新（死循环防护规则8）
 
+## D13+D14 · 2026-10-23（真机窗口日）—— TTS 真机核销 + 格式矩阵 10/10 全绿
+
+### D13 ① TTS 真机核销（HiAI 离线引擎链全通）
+DevTools 协议级直测（不经 UI）：`plugin:native-tts|init {success:true}` → `check {success:true}` → `speak {utteranceId:"ohos-tts-1"}`——hilog 证 **HiAI_OfflineTtsService（华为离线语音）接收并开始合成朗读**（"speak method, engineName: com.readest.app... start speakInner"）——**离线引擎不依赖网络，不受 Clash 影响**。Edge 在线引擎=网络阻断（同 KI-7 类）；listVoices 401=在线语音列表接口（非阻断）
+- 前置：settings.json 写 `openBookInNewWindow:false` + `localStorage.ttsPreferredVoices.preferredClient='native-tts'`（均 DevTools invoke 完成）
+
+### D13 ② 剪贴板 + SelfTest
+- `clipboard-manager|write_text` → pasteboard.setData 真机验证（read 由前端 navigator.clipboard 兜底——契约如此）
+- SelfTest 60/64 + 4 SKIP（零回归基线维持）
+
+### D13 ③ 已知项：阅读器窗口的 devtools 不可达（单 socket）
+openBookInNewWindow=true 时阅读器是第二 ArkUI 窗口——**无独立 devtools socket**（/proc/net/unix 仅一枚）；遥控阅读器需先关 newWindow 设置（本次已改 settings 持久化）
+
+### D14 ④ 格式矩阵 10/10 全绿（冷启动 want 逐本）
+红楼梦/西游记/三国演义/傲慢与偏见/弗兰肯斯坦 EPUB×5 + **MOBI** + **AZW3** + **PDF** + **GBK TXT** + **竖排 EPUB**——每本 `Opening books: <hash>` 全 OK，Books/ 恰 10 hash 目录；竖排渲染截屏确认（vertical-rl 从右到左正确）
+- **发现（已规避）**：热启动 want 在 reader 页会落 pending 无 listener 接收（reader 页清理了 shared-intent 监听）——矩阵测试用冷启动 force-stop 保证；此为热启动深链边缘 case，列入后续增强
+- 语料入沙箱路径：rport（`hdc rport tcp:8000 tcp:8000` + PC http.server）→ DevTools invoke download_file 批量（hdc 重启会丢 rport 规则，需重建）
+
 ## D12 · 2026-10-23（真机窗口日）—— 端到端阅读链路全线打通（当日最大战果）
 
 ### ① D12 验收达成：导入 → 阅读 → 翻页 → 重启进度恢复 全绿
