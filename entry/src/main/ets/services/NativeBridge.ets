@@ -890,6 +890,63 @@ export class NativeBridge {
         return null;
       }
 
+      // ---- opener / sharekit / 杂项桌面命令（交付审计补齐：原版点击书内
+      //      外链开系统浏览器、分享菜单为用户可见功能）----
+      case 'plugin:opener|open_url': {
+        // 契约：resolve URL 字符串（实际打开的地址）；系统浏览器承载
+        const urlArg: Object | undefined = args['url'];
+        const urlStr: string = typeof urlArg === 'string'
+          ? urlArg as string : String((urlArg as Record<string, Object>)?.['url'] ?? '');
+        if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+          const want: Want = {
+            action: 'ohos.want.action.viewData',
+            uri: urlStr
+          };
+          this.context!.startAbility(want).catch((e: BusinessError): void => {
+            hilog.warn(0x0107, 'readestD9', 'open_url startAbility fail: %{public}s', e.message);
+          });
+        }
+        return urlStr;
+      }
+      case 'plugin:sharekit|share_text': {
+        const sText: string = String(args['text'] ?? args['content'] ?? '');
+        const data1: pasteboard.PasteData =
+          pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, sText);
+        await pasteboard.getSystemPasteboard().setData(data1);
+        return null; // 文本分享经系统粘贴板（鸿蒙 PC 无系统分享面板契约）
+      }
+      case 'plugin:sharekit|share_file': {
+        // 文件分享：拷贝到公共 Download 不可行（权限）；回退复制路径文本
+        const sfPath: string = this.fsPath(args);
+        const data2: pasteboard.PasteData =
+          pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, sfPath);
+        await pasteboard.getSystemPasteboard().setData(data2);
+        return null;
+      }
+      case 'plugin:dialog|message': {
+        // 形状应答（消息对话框由前端 toast 承载——readest UI 自带提示层）
+        return null;
+      }
+      case 'plugin:dialog|open': {
+        // 统一走 show_file_picker（前端本就优先 native-bridge 版）
+        return this.dispatch('show_file_picker', {});
+      }
+      case 'plugin:dialog|save': {
+        const svName: string = String(args['defaultPath'] ?? 'export.bin');
+        const svPicker: picker.DocumentSaveOptions = { newFileNames: [svName] };
+        const sv: picker.DocumentViewPicker = new picker.DocumentViewPicker(this.context!);
+        const uris: Array<string> = await sv.save(svPicker);
+        return uris.length > 0 ? uris[0] : null;
+      }
+      case 'reveal_item_in_dir': {
+        return null; // OHOS 无"在文件夹中显示"系统 API；前端容错隐藏入口
+      }
+      case 'set_window_title':
+      case 'plugin:window|set_title': {
+        // ArkUI 窗口标题由应用名固定；前端书名标题条自渲染，此处形状应答
+        return null;
+      }
+
       // ---- turso plugin (relationalStore pass-through; contract:
       //      src-tauri/plugins/tauri-plugin-turso/guest-js/index.ts) ----
       case 'plugin:turso|load': {
@@ -1299,14 +1356,20 @@ export class NativeBridge {
       case 'show_file_picker': {
         // fire-and-forget: results arrive as file-picker-result{uris}
         try {
-          const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
+          // 交付审计修复：无参构造（全局上下文）从 web invoke 调用栈弹出
+          // 后 select() promise 永挂（真机 picker 关闭但回调不回）；显式传
+          // UIAbility context 使回调路由回本能力窗口
+          const docPicker: picker.DocumentViewPicker =
+            new picker.DocumentViewPicker(this.context!);
           const uris: Array<string> = await docPicker.select({
             maxNumber: 50,
             fileSuffixFilters: []
           } as picker.DocumentSelectOptions);
+          hilog.info(0x0107, 'readestD9', 'picker returned %{public}d uris', uris.length);
           const evt: FilePickerEvent = { uris: uris };
           this.emitChannel('native-bridge', 'file-picker-result', evt);
         } catch (e) {
+          hilog.warn(0x0107, 'readestD9', 'picker failed: %{public}s', JSON.stringify(e).slice(0, 80));
           // cancelled: emit nothing (matches Android semantics)
         }
         return null;
