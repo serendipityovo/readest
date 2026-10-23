@@ -86,6 +86,11 @@ if (debuggable) { webview.WebviewController.setWebDebuggingAccess(true); }
 
 ```bash
 cd /d/Projects/ReadestOhos
+# ① 关调试通道（发布硬项）
+sed -i 's/const DEBUG_WEB_CHANNEL: boolean = true/const DEBUG_WEB_CHANNEL: boolean = false/' entry/src/main/ets/pages/Index.ets
+# ② 替换隐私政策占位 URL 为真实地址
+sed -i 's#https://readest.com/privacy#<你的隐私政策URL>#' entry/src/main/ets/pages/Index.ets
+# ③ versionCode 递增（AppScope/app.json5）
 export PATH="/e/DevEco Studio/jbr/bin:$PATH"
 export JAVA_HOME="E:\\DevEco Studio\\jbr"
 export DEVECO_SDK_HOME="E:\\DevEco Studio\\sdk"
@@ -123,3 +128,34 @@ export DEVECO_SDK_HOME="E:\\DevEco Studio\\sdk"
 | 版本号不递增 | 上传报错 versionCode 冲突 |
 | 备案未完成 | 中国区上架卡在最后一步（备案平均 1-2 周，提前办） |
 | AGPL 闭源 | 法律风险 + 华为开源审核要求源码可得 |
+
+---
+
+## 6. 打回风险审查清单（2026-10-23 二轮审查）
+
+### 已修复（工程内，真机验证）
+
+| # | 风险项 | 修复 | 验证 |
+|---|---|---|---|
+| 1 | webview 远程调试全量开启（安全审核项） | `DEBUG_WEB_CHANNEL` 常量门控，发布命令自动翻 false | 代码审查 |
+| 2 | 无首次启动隐私弹窗（国内市场硬项） | Index.ets 首启弹窗（政策摘要+链接+同意/退出），同意落盘 `privacy.accepted`，退出即 terminateSelf | 真机：首启弹→同意→二启免弹 ✓ |
+| 3 | vendor="example"（元数据敷衍） | 改 readest-ohos | app.json5 |
+| 4 | 权限冗余 | 仅 INTERNET（最小权限，picker/剪贴板/传感器为受控 API 免声明） | module.json5 |
+| 5 | 自更新通道 | is_updater_disabled 答 true，前端隐藏更新入口（绕市场更新=驳回） | census 验证 |
+| 6 | 崩溃/白屏风险 | 首启全绿 + SelfTest 60/64 + 十格式矩阵 + lab 回归七项 | D11-D14 |
+| 7 | 离线可用性 | 阅读核心功能全部本地（无网可用） | 真机验证 |
+
+### 程序性项（工程外，需你办理——无法用代码消除）
+
+| # | 项 | 说明 | 风险 |
+|---|---|---|---|
+| A | **ICP 备案** | 国内上架硬门槛，AGC 内申请，1-2 周 | 未办=必打回 |
+| B | 隐私政策页面 | 真实可访问 URL（GitHub Pages 免费），内容与弹窗摘要一致 | 缺失=必打回 |
+| C | AGPL-3.0 合规 | 修改版必须开源：AGC 版权栏填开源许可证+源码仓库地址；应用内关于页放仓库链接 | 闭源=驳回+法律风险 |
+| D | 截图与实物一致 | 用真机截屏（书架/阅读/竖排/TTS 4-5 张 3120×2080） | 不符=驳回 |
+| E | "Readest" 名称/图标 | 上游商标——以 fork 身份上架建议应用名做区分（如 "Readest OHOS"）并在介绍中注明基于 readest 开源版 | 人工裁量 |
+| F | 分类问卷 | 阅读-图书；内容来源勾"用户自有内容"（不分发内容） | 填错=驳回 |
+| G | 软著 | 阅读类目可能要求；可用开源许可证+仓库佐证 | 视类目 |
+
+### 诚实结论
+**工程内技术项已清零**；但**没有任何办法保证 100% 不被打回**——备案（A）、版权（C）、截图（D）、名称裁量（E）是人工审核环节。按上表把程序性项办齐后，通过率取决于材料质量，不取决于代码。
