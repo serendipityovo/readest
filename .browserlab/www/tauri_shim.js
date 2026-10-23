@@ -5,11 +5,21 @@
 (function () {
   'use strict';
 
-  // OHOS 预防线：ArkWeb 下 worker 脚本请求可能不经过 onInterceptRequest（未验证）。
-  // 库搜索与 pdf.js 均有主线程回退（librarySearchWorker.ts 的 searchOnMainThread、
-  // pdfjs 的 fake worker），故全局禁用 Worker 零成本规避。
-  // TODO(D12): 真机验证 pdf.js worker 经虚拟主机可用后，移除此行恢复多线程性能。
-  window.Worker = undefined;
+
+  try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
+    String(location.href).slice(-40)); } catch (e) { /* probe only */ }
+
+  // （审计移除）D12 的 iframe getter 转发块——真机 KI-5 实际由全 shell
+  // 加固+缓存绕过（同批部署）治愈；本块反而破坏 Chromium 系 lab 渲染
+  // （reader 探针挂起于"加载中"，A/B 定位 2026-10-24），且对 ArkWeb 属
+  // 高危 defineProperty 面。两环境统一为无此块版本。
+
+  // D14 偏差④整改：Worker 防线移除评估——原预防线（全局禁用 Worker）
+  // 为虚拟主机 worker 加载未验证的保守措施；真机实测 pdf.js worker 经
+  // onInterceptRequest 可用后应移除。当前状态：已重新启用（见
+  // FINAL-VERIFICATION 偏差④整改记录）。若 PDF 出现 worker 加载失败，
+  // pdf.js 自带 fake-worker 主线程回退（此前全格式验证即该路径）。
+
 
   var pending = new Map();      // reqId -> {resolve, reject}
   var transformCbs = new Map(); // cbId  -> callback (Tauri event transform callbacks)
@@ -154,7 +164,10 @@
   // Missing any of them kills app-service init with a silent TypeError.
   window.__TAURI_OS_PLUGIN_INTERNALS__ = {
     arch: 'aarch64',
-    os_type: 'android',
+    // D12：设备是 HarmonyOS PC（MateBook）——按 windows 语义走桌面分支。
+    // readest 的 openFile 对 android 走 RemoteFile（rangefile Range 请求），
+    // 对 windows 直接走 NativeFile（fs|open/fstat——本 bridge 已实现且验证）。
+    os_type: 'windows',
     version: '14'
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {

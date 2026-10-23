@@ -5,62 +5,21 @@
 (function () {
   'use strict';
 
+
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }
 
-  // KI-5 残余修复（D12）：同源 iframe（foliate paginator、filter iframe）
-  // 不继承主文档 <head> 注入。注意：shim 主体在 IIFE 后段才给 internals
-  // 赋完整值且是整体重赋——若此处直接转发对象引用，iframe 会持有早期空
-  // 对象且不再更新。故用 getter 转发（每次读取取主 window 最新值）。
-  try {
-    var injectIntoFrame = function (f) {
-      try {
-        var w = f.contentWindow;
-        if (!w || w.__KI5_ARMED__) return;
-        try {
-          w.__KI5_ARMED__ = true;
-          var keys = ['__TAURI_INTERNALS__', '__TAURI_OS_PLUGIN_INTERNALS__',
-                      '__TAURI_OS_PLUGIN_2__', '__TAURI_EVENT_PLUGIN_INTERNALS__',
-                      '__TAURI_TO_IPC_KEY__'];
-          for (var i = 0; i < keys.length; i++) {
-            (function (k) {
-              try {
-                Object.defineProperty(w, k, {
-                  configurable: true,
-                  get: function () { return window[k]; },
-                  set: function (v) { try { window[k] = v; } catch (e) { /* ro */ } }
-                });
-              } catch (e) { /* already defined */ }
-            })(keys[i]);
-          }
-        } catch (e) { /* define failed */ }
-      } catch (e) { /* sandboxed cross-origin frame: skip */ }
-    };
-    var armFrame = function (n) {
-      injectIntoFrame(n);
-      try { n.addEventListener('load', function () { injectIntoFrame(n); }, { once: true }); }
-      catch (e) { /* detached */ }
-    };
-    var mo = new MutationObserver(function (muts) {
-      for (var i = 0; i < muts.length; i++) {
-        var add = muts[i].addedNodes;
-        for (var j = 0; j < add.length; j++) {
-          var n = add[j];
-          if (n && n.tagName === 'IFRAME') armFrame(n);
-        }
-      }
-    });
-    mo.observe(document.documentElement || document, { childList: true, subtree: true });
-    var existing = document.querySelectorAll('iframe');
-    for (var k = 0; k < existing.length; k++) armFrame(existing[k]);
-  } catch (e) { /* engine without MutationObserver */ }
+  // （审计移除）D12 的 iframe getter 转发块——真机 KI-5 实际由全 shell
+  // 加固+缓存绕过（同批部署）治愈；本块反而破坏 Chromium 系 lab 渲染
+  // （reader 探针挂起于"加载中"，A/B 定位 2026-10-24），且对 ArkWeb 属
+  // 高危 defineProperty 面。两环境统一为无此块版本。
 
   // D14 偏差④整改：Worker 防线移除评估——原预防线（全局禁用 Worker）
   // 为虚拟主机 worker 加载未验证的保守措施；真机实测 pdf.js worker 经
   // onInterceptRequest 可用后应移除。当前状态：已重新启用（见
   // FINAL-VERIFICATION 偏差④整改记录）。若 PDF 出现 worker 加载失败，
   // pdf.js 自带 fake-worker 主线程回退（此前全格式验证即该路径）。
-  // window.Worker = undefined;
+
 
   var pending = new Map();      // reqId -> {resolve, reject}
   var transformCbs = new Map(); // cbId  -> callback (Tauri event transform callbacks)

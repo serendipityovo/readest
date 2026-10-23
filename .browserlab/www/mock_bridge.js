@@ -9,6 +9,7 @@
 // resolve_directory takes {directory:number} = BaseDirectory enum).
 (function () {
   'use strict';
+  var fhSeq = 0; var fhMap = {};
 
   window.__census = [];
   var labChannels = {}; // plugin-listener events -> Channel transformCallback id
@@ -1311,6 +1312,90 @@
       var d = decodeForStore(fromHeaders ? args : args.contents);
       files[wp] = d.b64 !== undefined ? { __b64: d.b64 } : d.text;
       saveFiles(files);
+      return [true, 'null'];
+    }
+    // ---- fs file-handle 组（审计补齐：os_type=windows 后 readest 走
+    //      NativeFile 路径；协议=真机 NativeBridge D12 实现：read 顺序读
+    //      +尾 8 字节小端 u64 读取数（0=EOF）、seek 数字 whence、write
+    //      参数 data。作用于 labfs 存储。 ----
+    if (cmd === 'plugin:fs|open' || cmd === 'plugin:fs|create') {
+      var op = (args.path || '').replace('file://', '');
+      var of = loadFiles();
+      var ob = null;
+      if (Object.prototype.hasOwnProperty.call(of, op)) {
+        var oc = of[op];
+        if (oc && typeof oc === 'object' && typeof oc.__b64 === 'string') {
+          var obin = atob(oc.__b64); ob = [];
+          for (var oi = 0; oi < obin.length; oi++) ob.push(obin.charCodeAt(oi));
+        } else {
+          var oenc = new TextEncoder(); var oeb = oenc.encode(String(oc)); ob = [];
+          for (var oi2 = 0; oi2 < oeb.length; oi2++) ob.push(oeb[oi2]);
+        }
+      } else if (cmd === 'plugin:fs|create') {
+        ob = [];
+      } else {
+        return [false, 'file not found: ' + op];
+      }
+      fhSeq += 1;
+      fhMap[fhSeq] = { bytes: ob, pos: 0, path: op, dirty: false };
+      return [true, String(fhSeq)];
+    }
+    if (cmd === 'plugin:fs|read') {
+      var rh = fhMap[args.rid | 0];
+      if (!rh) return [false, 'bad file handle: ' + args.rid];
+      var rlen = Math.min(args.len | 0, rh.bytes.length - rh.pos);
+      var out = rh.bytes.slice(rh.pos, rh.pos + rlen);
+      rh.pos += rlen;
+      var n = rlen;
+      for (var rb = 0; rb < 8; rb++) { out.push(n & 0xFF); n = Math.floor(n / 256); }
+      return [true, JSON.stringify(out)];
+    }
+    if (cmd === 'plugin:fs|write') {
+      var wh2 = fhMap[args.rid | 0];
+      if (!wh2) return [false, 'bad file handle: ' + args.rid];
+      var wd = args.data || [];
+      for (var wi = 0; wi < wd.length; wi++) wh2.bytes[wh2.pos + wi] = wd[wi];
+      wh2.pos += wd.length; wh2.dirty = true;
+      return [true, 'null'];
+    }
+    if (cmd === 'plugin:fs|seek') {
+      var sh = fhMap[args.rid | 0];
+      if (!sh) return [false, 'bad file handle: ' + args.rid];
+      var off = args.offset | 0, wno = (args.whence | 0) || 0;
+      if (wno === 1) sh.pos += off;
+      else if (wno === 2) sh.pos = sh.bytes.length + off;
+      else sh.pos = off;
+      return [true, String(sh.pos)];
+    }
+    if (cmd === 'plugin:fs|size') {
+      var sh3 = fhMap[args.rid | 0];
+      if (!sh3) return [false, 'bad file handle: ' + args.rid];
+      return [true, String(sh3.bytes.length)];
+    }
+    if (cmd === 'plugin:fs|fstat' || cmd === 'plugin:fs|stat') {
+      var stPath = (cmd === 'plugin:fs|fstat' && fhMap[args.rid | 0])
+        ? fhMap[args.rid | 0].path : (args.path || '').replace('file://', '');
+      var stf = loadFiles();
+      if (!Object.prototype.hasOwnProperty.call(stf, stPath)) {
+        return [false, 'file not found: ' + stPath];
+      }
+      var stc = stf[stPath];
+      var stLen = (stc && stc.__b64) ? atob(stc.__b64).length : String(stc).length;
+      return [true, JSON.stringify({ isFile: true, isDirectory: false, isSymlink: false,
+        size: stLen, mtimeMs: Date.now(), atimeMs: Date.now(), birthtimeMs: Date.now(), readonly: false })];
+    }
+    if (cmd === 'plugin:fs|close') {
+      var ch2 = fhMap[args.rid | 0];
+      if (ch2) {
+        if (ch2.dirty) {
+          var cf = loadFiles();
+          var sarr = ch2.bytes;
+          var sbin = '';
+          for (var si = 0; si < sarr.length; si++) sbin += String.fromCharCode(sarr[si]);
+          try { cf[ch2.path] = { __b64: btoa(sbin) }; saveFiles(cf); } catch (e) { /* quota */ }
+        }
+        delete fhMap[args.rid | 0];
+      }
       return [true, 'null'];
     }
     if (cmd === 'plugin:fs|remove') {
