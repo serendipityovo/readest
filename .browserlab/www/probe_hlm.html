@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<script src="/tauri_shim.js?v=evt1"></script>
+<script src="/mock_bridge.js?v=pick1"></script>
+</head><body><div id="out">HLM-PROBE-PENDING</div>
+<script>
+// 豆腐框诊断（交付审计）：种子红楼梦(繁体 Gutenberg 版) → 跳到 ~4.4%
+// （真机第 71/1600 页）→ dump 该处正文文本 + 每字渲染宽度指纹。
+// 桌面 Chromium 若同样位置无豆腐 → ArkWeb 字体栈问题；文本本身给出
+// 真机截图中豆腐位置的真实字符。
+(function () {
+  var out = document.getElementById('out');
+  function show(s) { out.textContent = s; }
+  fetch('/corpus/hongloumeng.epub')
+    .then(function (res) { return res.arrayBuffer(); })
+    .then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var binary = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      var files = {
+        '/lab/files/Readest/Books/4d835ba4ea896778e5c15b9919d039d2/紅樓夢.epub':
+          { __b64: btoa(binary) }
+      };
+      var prev = {};
+      try { prev = JSON.parse(localStorage.getItem('labfs_files') || '{}'); } catch (e) {}
+      Object.keys(prev).forEach(function (k) {
+        if (k.indexOf('/Books/') < 0) files[k] = prev[k];
+      });
+      localStorage.setItem('labfs_files', JSON.stringify(files));
+      localStorage.setItem('hlm_probe', '1');
+      location.href = '/reader?ids=4d835ba4ea896778e5c15b9919d039d2';
+      show('SEEDED-NAVIGATING');
+    })
+    .catch(function (e) { show('SEED-FAIL ' + e.message); });
+})();
+</script></body></html>

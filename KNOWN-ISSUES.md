@@ -73,3 +73,9 @@
 | 不可达 URL 走 status 0 envelope → dist-js Response 构造抛裸 TypeError | mock 层 status 0 直接 reject（对齐设备 BusinessError 口径），错误视图文案可读 |
 | 回归语言漂移（headless Edge 系统 en 覆盖 zh，'第1页' 断言挂） | probe_reader 种子强制 globalViewSettings.uiLanguage + i18nextLng = zh-CN |
 | 模拟器中文用户名路径 qemu 打不开 system.img | 镜像/实例迁 D:/emu-image、D:/emu-inst（imageRoot 下需 system-image/ 层级），-imageRoot/-instancePath 显式传参 |
+
+### 非缺陷备案：红楼梦语料源级缺字（2026-10-24 诊断闭环）
+- 现象：第 69 页"加以麟髓之醅，**鳳乳之□釀**"等处出现方框，用户感知为渲染缺字
+- 诊断（三层排除后定位）：①字体链无缺失（canvas 逐字 800+ 繁简字符零豆腐，含 醅/麴/麟/髓/鳳 等全部罕见字）②DOM 单一字体链 ③高清放大截图该行无渲染异常
+- **真因：epub 源文本字面量 U+25A1（WHITE SQUARE）**——Gutenberg 版红楼梦在电子化时丢失 367 个罕见字（如 麴），以 □ 替代写进了书文件本身。上游 readest 桌面版/任何阅读器打开此文件显示相同
+- 处置：非应用缺陷，不改代码。如需完美文本可换其他版本语料（如人文社排版电子书）

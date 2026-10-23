@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>tofu probe</title>
+<script src="/tauri_shim.js?v=evt1"></script>
+<script src="/mock_bridge.js?v=pick1"></script>
+<style>
+  body { background:#1a1a1a; color:#eee; font:13px/1.6 monospace; padding:12px; }
+  #out { white-space:pre-wrap; }
+  .b { color:#f66; }
+</style>
+</head>
+<body>
+<div id="out">loading…</div>
+<script>
+// 红楼梦第71页附近文本（soak 后定位）——直接从书的 XHTML 提取的段落将经
+// mock 读入；先做字体层基线检测
+(async () => {
+  const log = (s) => { document.getElementById('out').textContent += '\n' + s; };
+  document.getElementById('out').textContent = '== font fallback probe ==';
+
+  // 1) UI 层字体链
+  const probeChars = '聽見魂寶玉嚇旁邊經過';
+  const span = document.createElement('span');
+  span.style.cssText = 'font-size:40px;position:absolute;visibility:hidden;';
+  document.body.appendChild(span);
+
+  const tryFont = (fam) => {
+    span.style.fontFamily = fam;
+    return [...probeChars].map(ch => {
+      // 宽度指纹法：设置具体字体 vs cursive 不可达字体，比较渲染宽度
+      span.textContent = ch;
+      const w1 = span.offsetWidth;
+      span.style.fontFamily = 'NOFONT_NOT_EXIST';
+      const w2 = span.offsetWidth;
+      span.style.fontFamily = fam;
+      return { ch, w1, w2, tofu: w1 === w2 && w1 > 0 };
+    });
+  };
+
+  for (const fam of ['Inter', 'sans-serif', 'serif', 'system-ui',
+                     'Inter, ui-sans-serif, system-ui, sans-serif',
+                     'Georgia, serif', 'Times New Roman, serif']) {
+    const r = tryFont(fam);
+    const tofu = r.filter(x => x.tofu);
+    log(`font[${fam}] tofu=${tofu.length}/${r.length}` + (tofu.length ? ' → ' + tofu.map(t=>t.ch+'(w'+t.w1+')').join(' ') : ''));
+  }
+
+  // 2) foliate 阅读器实际字体链：从 settings 与 bookStyles 提取
+  try {
+    const fs = await window.__TAURI_INTERNALS__.invoke('plugin:fs|read_text_file',
+      { path: 'settings.json', options: { baseDir: 18 } });
+    const txt = new TextDecoder().decode(new Uint8Array(fs));
+    const st = JSON.parse(txt);
+    const typ = st.typewriter || {};
+    log('settings.typewriter.fontFamily=' + JSON.stringify(typ.fontFamily));
+    log('settings.typewriter=' + JSON.stringify(typ).slice(0, 300));
+    const gs = st.globalReadSettings || st.readSettings;
+    if (gs) log('readSettings=' + JSON.stringify(gs).slice(0, 300));
+  } catch (e) { log('settings read fail: ' + e.message); }
+
+  // 3) 上游 readest 默认字体常量（bundle 里查 getDefaultFontFamily 形态）
+  log('PROBE-DONE');
+})();
+</script>
+</body>
+</html>
