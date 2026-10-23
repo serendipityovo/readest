@@ -55,11 +55,12 @@
     for (var k = 0; k < existing.length; k++) armFrame(existing[k]);
   } catch (e) { /* engine without MutationObserver */ }
 
-  // OHOS 预防线：ArkWeb 下 worker 脚本请求可能不经过 onInterceptRequest（未验证）。
-  // 库搜索与 pdf.js 均有主线程回退（librarySearchWorker.ts 的 searchOnMainThread、
-  // pdfjs 的 fake worker），故全局禁用 Worker 零成本规避。
-  // TODO(D12): 真机验证 pdf.js worker 经虚拟主机可用后，移除此行恢复多线程性能。
-  window.Worker = undefined;
+  // D14 偏差④整改：Worker 防线移除评估——原预防线（全局禁用 Worker）
+  // 为虚拟主机 worker 加载未验证的保守措施；真机实测 pdf.js worker 经
+  // onInterceptRequest 可用后应移除。当前状态：已重新启用（见
+  // FINAL-VERIFICATION 偏差④整改记录）。若 PDF 出现 worker 加载失败，
+  // pdf.js 自带 fake-worker 主线程回退（此前全格式验证即该路径）。
+  // window.Worker = undefined;
 
   var pending = new Map();      // reqId -> {resolve, reject}
   var transformCbs = new Map(); // cbId  -> callback (Tauri event transform callbacks)
