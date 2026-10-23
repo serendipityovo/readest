@@ -102,7 +102,7 @@ struct SelfTest {
     // ---- 网络族（D10.5 增：设备侧 @ohos.net.http 真网核销）----
     { group: '网络', cmd: 'plugin:http|fetch', args: '{"clientConfig":{"method":"GET","url":"https://www.gutenberg.org/ebooks.opds/","headers":[["User-Agent","Readest/1.0"]]}}',
       skip: '返回 rid 需 fetch_send 接力，D13 真机手测链路' },
-    { group: '网络', cmd: 'download_file', args: '{"url":"https://www.gutenberg.org/ebooks/1342.epub.noimages","filePath":"/data/app/el2/100/base/com.readest.app/haps/entry/files/opds_selftest.epub","headers":{"User-Agent":"Readest/1.0 (OPDS Browser)"}}' }
+    { group: '网络', cmd: 'download_file', args: '{"url":"https://mirrors.tuna.tsinghua.edu.cn/static/img/favicon.ico","filePath":"/data/app/el2/100/base/com.readest.app/haps/entry/files/opds_selftest.ico","headers":{"User-Agent":"Readest/1.0 (OPDS Browser)"}}' }
   ];
 
   aboutToAppear(): void {

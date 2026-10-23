@@ -92,7 +92,10 @@ export class RawFileServer {
 
     response.setResponseHeader([
       { headerKey: 'Content-Type', headerValue: this.mimeOf(path) },
-      { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
+      { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' },
+      // 本地虚拟主机零延迟；no-store 防止 ArkWeb HTTP 缓存在构建更新后
+      // 供旧 index.html/chunk（D12 曾致 reload 循环+新旧 shim 混跑）
+      { headerKey: 'Cache-Control', headerValue: 'no-store' }
     ]);
     response.setResponseEncoding('utf-8');
     response.setResponseCode(200);
@@ -101,7 +104,7 @@ export class RawFileServer {
     const filePath: string = `${root}${path}`;
     const data: ArrayBuffer | null = this.readSync(filePath);
     if (data !== null) {
-      response.setResponseData(data);
+      response.setResponseData(this.htmlWithGuard(path, data));
       return response;
     }
     // SPA fallback: unknown extension-less routes resolve to the flat Next
@@ -114,7 +117,7 @@ export class RawFileServer {
           { headerKey: 'Content-Type', headerValue: 'text/html' },
           { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
         ]);
-        response.setResponseData(shellData);
+        response.setResponseData(this.htmlWithGuard(`${path}.html`, shellData));
         return response;
       }
       const indexData: ArrayBuffer | null = this.readSync(`${this.rootDir}/index.html`);
@@ -123,7 +126,7 @@ export class RawFileServer {
           { headerKey: 'Content-Type', headerValue: 'text/html' },
           { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
         ]);
-        response.setResponseData(indexData);
+        response.setResponseData(this.htmlWithGuard('/index.html', indexData));
         return response;
       }
     }
@@ -131,6 +134,48 @@ export class RawFileServer {
     response.setReasonMessage('Not Found');
     response.setResponseData('not found');
     return response;
+  }
+
+  /**
+   * KI-5 残余根治（D12）：iframe 导航后 window 重建，shim 的 load 事件注入
+   * 晚于子文档 defer 脚本 → os_type/metadata 崩。对一切 HTML 响应（含路由
+   * shell——它们是 iframe 的装载目标）服务端注入 OS/metadata 兜底，无竞态。
+   * index.html 由打包侧注入完整版，此处幂等跳过。
+   */
+  private htmlWithGuard(path: string, data: ArrayBuffer): ArrayBuffer {
+    if (!path.endsWith('.html') && path !== '/') {
+      return data;
+    }
+    try {
+      const bytes: Uint8Array = new Uint8Array(data);
+      let head: string = '';
+      for (let i: number = 0; i < bytes.length; i++) {
+        head += String.fromCharCode(bytes[i]);
+      }
+      if (head.includes('__TAURI_OS_PLUGIN_INTERNALS__')) {
+        return data; // index.html already carries the full guard
+      }
+      const guard: string = '<script>window.__TAURI_INTERNALS__=window.__TAURI_INTERNALS__'
+        + '||{metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"},'
+        + 'windows:["main"],webviews:["main"]}};'
+        + 'window.__TAURI_OS_PLUGIN_INTERNALS__=window.__TAURI_OS_PLUGIN_INTERNALS__'
+        + '||{arch:"x86_64",os_type:"windows",version:"10"};</script>';
+      if (head.includes('<head>')) {
+        const i: number = head.indexOf('<head>');
+        head = head.slice(0, i + 6) + guard + head.slice(i + 6);
+      } else if (head.includes('<html')) {
+        head = guard + head;
+      } else {
+        return data;
+      }
+      const out: Uint8Array = new Uint8Array(head.length);
+      for (let i: number = 0; i < head.length; i++) {
+        out[i] = head.charCodeAt(i) & 0xFF;
+      }
+      return out.buffer;
+    } catch (e) {
+      return data;
+    }
   }
 
   /**
@@ -225,6 +270,11 @@ export class RawFileServer {
     } catch (e) {
       console.error(`[ReadestOhos] write stamp failed: ${JSON.stringify(e)}`);
     }
+  }
+
+  /** Current extracted frontend stamp — used as web load URL cache buster. */
+  buildStamp(): string {
+    return this.readLocalStamp();
   }
 
   private bytesToAscii(bytes: Uint8Array): string {

@@ -5,6 +5,56 @@
 (function () {
   'use strict';
 
+  try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
+    String(location.href).slice(-40)); } catch (e) { /* probe only */ }
+
+  // KI-5 残余修复（D12）：同源 iframe（foliate paginator、filter iframe）
+  // 不继承主文档 <head> 注入。注意：shim 主体在 IIFE 后段才给 internals
+  // 赋完整值且是整体重赋——若此处直接转发对象引用，iframe 会持有早期空
+  // 对象且不再更新。故用 getter 转发（每次读取取主 window 最新值）。
+  try {
+    var injectIntoFrame = function (f) {
+      try {
+        var w = f.contentWindow;
+        if (!w || w.__KI5_ARMED__) return;
+        try {
+          w.__KI5_ARMED__ = true;
+          var keys = ['__TAURI_INTERNALS__', '__TAURI_OS_PLUGIN_INTERNALS__',
+                      '__TAURI_OS_PLUGIN_2__', '__TAURI_EVENT_PLUGIN_INTERNALS__',
+                      '__TAURI_TO_IPC_KEY__'];
+          for (var i = 0; i < keys.length; i++) {
+            (function (k) {
+              try {
+                Object.defineProperty(w, k, {
+                  configurable: true,
+                  get: function () { return window[k]; },
+                  set: function (v) { try { window[k] = v; } catch (e) { /* ro */ } }
+                });
+              } catch (e) { /* already defined */ }
+            })(keys[i]);
+          }
+        } catch (e) { /* define failed */ }
+      } catch (e) { /* sandboxed cross-origin frame: skip */ }
+    };
+    var armFrame = function (n) {
+      injectIntoFrame(n);
+      try { n.addEventListener('load', function () { injectIntoFrame(n); }, { once: true }); }
+      catch (e) { /* detached */ }
+    };
+    var mo = new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var add = muts[i].addedNodes;
+        for (var j = 0; j < add.length; j++) {
+          var n = add[j];
+          if (n && n.tagName === 'IFRAME') armFrame(n);
+        }
+      }
+    });
+    mo.observe(document.documentElement || document, { childList: true, subtree: true });
+    var existing = document.querySelectorAll('iframe');
+    for (var k = 0; k < existing.length; k++) armFrame(existing[k]);
+  } catch (e) { /* engine without MutationObserver */ }
+
   // OHOS 预防线：ArkWeb 下 worker 脚本请求可能不经过 onInterceptRequest（未验证）。
   // 库搜索与 pdf.js 均有主线程回退（librarySearchWorker.ts 的 searchOnMainThread、
   // pdfjs 的 fake worker），故全局禁用 Worker 零成本规避。
@@ -154,7 +204,10 @@
   // Missing any of them kills app-service init with a silent TypeError.
   window.__TAURI_OS_PLUGIN_INTERNALS__ = {
     arch: 'aarch64',
-    os_type: 'android',
+    // D12：设备是 HarmonyOS PC（MateBook）——按 windows 语义走桌面分支。
+    // readest 的 openFile 对 android 走 RemoteFile（rangefile Range 请求），
+    // 对 windows 直接走 NativeFile（fs|open/fstat——本 bridge 已实现且验证）。
+    os_type: 'windows',
     version: '14'
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {

@@ -36,6 +36,39 @@ interface WsCloseData { code: number; reason: string }
 interface WsTextMessage { type: string; data: string }
 interface WsBinaryMessage { type: string; data: number[] }
 interface WsCloseMessage { type: string; data: WsCloseData }
+// fs file-handle 组（D12）：read_text_file_lines 的服务端行迭代器
+interface LinesIter {
+  lines: string[];
+  idx: number;
+}
+interface FsDirent {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+}
+interface LinesNextResult {
+  value: string | null;
+  done: boolean;
+}
+interface WatchResult {
+  rid: number;
+}
+interface FsStatInfo {
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  size: number;
+  mtimeMs: number;
+  atimeMs: number;
+  birthtimeMs: number;
+  readonly: boolean;
+}
+interface FsHandleRec {
+  file: fs.File;
+  path: string;
+  pos: number;
+}
 // download_file onProgress Channel payload (transfer_file.rs ProgressPayload,
 // serde camelCase)
 interface DownloadProgressPayload {
@@ -634,6 +667,228 @@ export class NativeBridge {
         }
         return null;
       }
+      // ---- fs file-handle 组（D12）：前端 bundle 全量调用面里 open/read/
+      //      size/seek/fstat 等此前无 case（default null），曾断 file:// 导入链
+      //      （importBook→NativeFile→open 返 null）。语义对齐
+      //      @tauri-apps/plugin-fs v2 guest-js。 ----
+      case 'plugin:fs|open':
+      case 'plugin:fs|create': {
+        const fhPath: string = this.fsPath(args);
+        let mode: number = bareCmd.endsWith('create')
+          ? fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE
+          : fs.OpenMode.READ_ONLY;
+        const fhOpts: Object | undefined = args['options'];
+        if (fhOpts !== undefined && fhOpts !== null) {
+          const o: Record<string, Object> =
+            JSON.parse(JSON.stringify(fhOpts)) as Record<string, Object>;
+          const wantWrite: boolean = o['write'] === true || o['append'] === true;
+          const wantCreate: boolean = o['create'] === true || o['createNew'] === true;
+          const wantTrunc: boolean = o['truncate'] === true;
+          if (wantWrite || wantCreate || wantTrunc) {
+            mode = fs.OpenMode.READ_WRITE
+              | (wantCreate ? fs.OpenMode.CREATE : 0)
+              | (o['append'] === true ? fs.OpenMode.APPEND : 0)
+              | (wantTrunc ? fs.OpenMode.TRUNC : 0);
+          }
+        }
+        if (!this.fsExists(fhPath) && mode === fs.OpenMode.READ_ONLY) {
+          throw new Error(`file not found: ${fhPath}`);
+        }
+        const fhFile: fs.File = fs.openSync(fhPath, mode);
+        const fhRid: number = this.fsNextRid++;
+        const rec: FsHandleRec = { file: fhFile, path: fhPath, pos: 0 };
+        this.fsHandles.set(fhRid, rec);
+        return fhRid;
+      }
+      case 'plugin:fs|read': {
+        // readest 私有协议（NativeFile）：顺序读（无 offset 参数），返回
+        // number[] = 数据字节 + 尾 8 字节小端 u64（本次读取字节数；0=EOF）
+        const rid: number = this.fsRidOf(args);
+        const h: FsHandleRec | undefined = this.fsHandles.get(rid);
+        if (h === undefined) {
+          throw new Error(`bad file handle: ${rid}`);
+        }
+        const wantLen: number = Number(args['len'] ?? 0);
+        const stat: fs.Stat = fs.statSync(h.path);
+        const n: number = Math.min(wantLen, stat.size - h.pos);
+        const out: number[] = [];
+        if (n > 0) {
+          const buf: ArrayBuffer = new ArrayBuffer(n);
+          const rd: number = fs.readSync(h.file.fd, buf, { offset: h.pos, length: n });
+          h.pos += rd;
+          const u8: Uint8Array = new Uint8Array(buf.slice(0, rd));
+          for (let i: number = 0; i < u8.length; i++) {
+            out.push(u8[i]);
+          }
+          // append u64-LE of bytes-read
+          let v: number = rd;
+          for (let b: number = 0; b < 8; b++) {
+            out.push(v & 0xFF);
+            v = Math.floor(v / 256);
+          }
+        } else {
+          for (let b: number = 0; b < 8; b++) {
+            out.push(0); // EOF
+          }
+        }
+        return out;
+      }
+      case 'plugin:fs|write': {
+        const wrid: number = this.fsRidOf(args);
+        const wh: FsHandleRec | undefined = this.fsHandles.get(wrid);
+        if (wh === undefined) {
+          throw new Error(`bad file handle: ${wrid}`);
+        }
+        const wArr: number[] = args['data'] as Object as number[];
+        const wBytes: Uint8Array = new Uint8Array(wArr);
+        const wBuf: ArrayBuffer = new ArrayBuffer(wBytes.length);
+        new Uint8Array(wBuf).set(wBytes);
+        const wOff: number | undefined = args['offset'] !== undefined
+          ? Number(args['offset']) : undefined;
+        const written: number = fs.writeSync(wh.file.fd, wBuf, wOff !== undefined
+          ? { offset: wOff, length: wBytes.length }
+          : { offset: wh.pos, length: wBytes.length });
+        wh.pos += written;
+        return null;
+      }
+      case 'plugin:fs|size': {
+        const srid: number = this.fsRidOf(args);
+        const sh: FsHandleRec | undefined = this.fsHandles.get(srid);
+        if (sh === undefined) {
+          throw new Error(`bad file handle: ${srid}`);
+        }
+        return fs.statSync(sh.path).size;
+      }
+      case 'plugin:fs|seek': {
+        // readest 私有协议：offset/whence 均为数字（0=start 1=current 2=end），
+        // 返回新的绝对位置
+        const krid: number = this.fsRidOf(args);
+        const kh: FsHandleRec | undefined = this.fsHandles.get(krid);
+        if (kh === undefined) {
+          throw new Error(`bad file handle: ${krid}`);
+        }
+        const off: number = Number(args['offset'] ?? 0);
+        const whence: number = Number(args['whence'] ?? 0);
+        const ks: fs.Stat = fs.statSync(kh.path);
+        if (whence === 1) {
+          kh.pos = kh.pos + off;
+        } else if (whence === 2) {
+          kh.pos = ks.size + off;
+        } else {
+          kh.pos = off;
+        }
+        return kh.pos;
+      }
+      case 'plugin:fs|close': {
+        const crid: number = this.fsRidOf(args);
+        const ch: FsHandleRec | undefined = this.fsHandles.get(crid);
+        if (ch !== undefined) {
+          this.fsHandles.delete(crid);
+          fs.closeSync(ch.file.fd);
+        }
+        return null;
+      }
+      case 'plugin:fs|stat':
+      case 'plugin:fs|lstat': {
+        return this.fsStatInfoOf(this.fsPath(args));
+      }
+      case 'plugin:fs|fstat': {
+        const frid: number = this.fsRidOf(args);
+        const fh2: FsHandleRec | undefined = this.fsHandles.get(frid);
+        if (fh2 === undefined) {
+          throw new Error(`bad file handle: ${frid}`);
+        }
+        return this.fsStatInfoOf(fh2.path);
+      }
+      case 'plugin:fs|truncate': {
+        const tPath: string = this.fsPath(args);
+        const tLen: number | undefined = args['len'] !== undefined
+          ? Number(args['len']) : 0;
+        if (tLen !== undefined && tLen > 0) {
+          // read-modify-write: OHOS fileIo has no ftruncate
+          const cur: number[] = this.fsReadBytes(tPath);
+          this.fsWriteBytes(tPath, new Uint8Array(cur.slice(0, tLen)));
+        } else {
+          this.fsWriteBytes(tPath, new Uint8Array(0));
+        }
+        return null;
+      }
+      case 'plugin:fs|ftruncate': {
+        const trid: number = this.fsRidOf(args);
+        const th: FsHandleRec | undefined = this.fsHandles.get(trid);
+        if (th === undefined) {
+          throw new Error(`bad file handle: ${trid}`);
+        }
+        return null; // unsupported on OHOS fileIo; book import never uses it
+      }
+      case 'plugin:fs|rename': {
+        let rFrom: string = String(args['fromPath'] ?? args['oldPath'] ?? '');
+        let rTo: string = String(args['toPath'] ?? args['newPath'] ?? '');
+        if (!rFrom.startsWith('/')) {
+          rFrom = this.pathWithBase(rFrom, args['options'], 'fromPathBaseDir');
+        }
+        if (!rTo.startsWith('/')) {
+          rTo = this.pathWithBase(rTo, args['options'], 'toPathBaseDir');
+        }
+        try {
+          fs.renameSync(rFrom, rTo);
+        } catch (e) {
+          throw new Error(`rename failed: ${rFrom} -> ${rTo}`);
+        }
+        return null;
+      }
+      case 'plugin:fs|read_dir': {
+        const dirPath: string = this.fsPath(args);
+        const names: string[] = fs.listFileSync(dirPath);
+        const entries: FsDirent[] = [];
+        for (let di: number = 0; di < names.length; di++) {
+          const n: string = names[di];
+          const st: fs.Stat = fs.statSync(`${dirPath}/${n}`);
+          const e: FsDirent = {
+            name: n,
+            isFile: st.isFile(),
+            isDirectory: st.isDirectory(),
+            isSymlink: false
+          };
+          entries.push(e);
+        }
+        return entries;
+      }
+      case 'plugin:fs|read_text_file_lines': {
+        const lp: string = this.fsPath(args);
+        const text: string = this.fsReadText(lp);
+        const lrid: number = this.fsNextRid++;
+        this.fsLineIters.set(lrid, { lines: text.split('\n'), idx: 0 });
+        return lrid;
+      }
+      case 'plugin:fs|read_text_file_lines_next': {
+        const nrid: number = this.fsRidOf(args);
+        const it: LinesIter | undefined = this.fsLineIters.get(nrid);
+        if (it === undefined) {
+          throw new Error(`bad lines handle: ${nrid}`);
+        }
+        if (it.idx >= it.lines.length) {
+          this.fsLineIters.delete(nrid);
+          const fin: LinesNextResult = { value: null, done: true };
+          return fin;
+        }
+        const line: string = it.lines[it.idx++];
+        const nxt: LinesNextResult = { value: line, done: it.idx >= it.lines.length };
+        return nxt;
+      }
+      case 'plugin:fs|watch': {
+        const w: WatchResult = { rid: -1 }; // no FS watcher on OHOS bridge
+        return w;
+      }
+      case 'plugin:fs|unwatch': {
+        return null;
+      }
+      case 'plugin:fs|start_accessing_security_scoped_resource': {
+        return this.fsPath(args); // macOS-only concept; echo the path as scope
+      }
+      case 'plugin:fs|stop_accessing_security_scoped_resource': {
+        return null;
+      }
 
       // ---- turso plugin (relationalStore pass-through; contract:
       //      src-tauri/plugins/tauri-plugin-turso/guest-js/index.ts) ----
@@ -925,12 +1180,21 @@ export class NativeBridge {
           dlOpts.extraData = String(bodyArg);
         }
         const dlReq: http.HttpRequest = http.createHttp();
-        const dlRsp: http.HttpResponse = await dlReq.request(dlUrl, dlOpts).catch(
-          (e: BusinessError): http.HttpResponse => {
-            dlReq.destroy();
-            throw new Error(`download failed: ${e.message}`);
+        // KI-7 看门狗：系统 http 栈对不可达 TLS 站点可能永不回调
+        // （readTimeout 不触发），20s 强制失败避免用例永挂
+        const dlWatchdog: Promise<http.HttpResponse> = new Promise(
+          (_resolve, reject) => {
+            setTimeout((): void => {
+              reject(new Error('download watchdog timeout (20s)'));
+            }, 20000);
           }
         );
+        const dlRsp: http.HttpResponse = await Promise
+          .race([dlReq.request(dlUrl, dlOpts), dlWatchdog])
+          .catch((e: BusinessError): http.HttpResponse => {
+            dlReq.destroy();
+            throw new Error(`download failed: ${e.message}`);
+          });
         dlReq.destroy();
         if (dlRsp.responseCode >= 400) {
           throw new Error(`http error code ${dlRsp.responseCode}`);
@@ -1297,6 +1561,39 @@ export class NativeBridge {
     } catch (e) {
       return false;
     }
+  }
+
+  // ---- fs file-handle 组（D12）----
+  private fsHandles: Map<number, FsHandleRec> = new Map();
+  private fsLineIters: Map<number, LinesIter> = new Map();
+  private fsNextRid: number = 1;
+
+  private fsRidOf(args: Record<string, Object>): number {
+    return Number(args['rid'] ?? -1);
+  }
+
+  private fsStatInfoOf(p: string): FsStatInfo {
+    if (!this.fsExists(p)) {
+      throw new Error(`file not found: ${p}`);
+    }
+    const st: fs.Stat = fs.statSync(p);
+    const info: FsStatInfo = {
+      isFile: st.isFile(),
+      isDirectory: st.isDirectory(),
+      isSymlink: false,
+      size: st.size,
+      mtimeMs: (st.mtime ?? 0) * 1000,
+      atimeMs: (st.atime ?? 0) * 1000,
+      birthtimeMs: (st.mtime ?? 0) * 1000,
+      readonly: false
+    };
+    return info;
+  }
+
+  private fsReadText(p: string): string {
+    const bytes: number[] = this.fsReadBytes(p);
+    const arr: Uint8Array = new Uint8Array(bytes);
+    return new util.TextDecoder().decodeToString(arr);
   }
 
   private fsEnsureDir(p: string): void {

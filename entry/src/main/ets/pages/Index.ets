@@ -17,6 +17,14 @@ struct Index {
 
   aboutToAppear(): void {
     webview.WebviewController.initializeWebEngine();
+    // D12 真机窗口：开启 webview 远程调试（hdc fport localabstract:
+    // webview_devtools_remote_* → DevTools Protocol），页面内任意 JS 注入的
+    // 遥控通道；发布构建可按需关闭
+    try {
+      webview.WebviewController.setWebDebuggingAccess(true);
+    } catch (e) {
+      console.error(`[ReadestOhos] setWebDebuggingAccess failed: ${JSON.stringify(e)}`);
+    }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     this.fileServer = new RawFileServer(context);
     nativeBridge.setController(this.controller, context);
@@ -36,7 +44,10 @@ struct Index {
   build() {
     Column() {
       if (this.frontendReady) {
-        Web({ src: VIRTUAL_HOST, controller: this.controller })
+        // D12 缓存根治：URL 带 buildstamp 查询参数，每次前端包更新后
+        // URL 变化强制绕过 ArkWeb HTTP 缓存（曾供旧 index.html——无内联
+        // shim——造成 app service init 失败与幽灵第二文档）
+        Web({ src: `${VIRTUAL_HOST}?v=${this.fileServer?.buildStamp() ?? '0'}`, controller: this.controller })
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .fileAccess(true)
@@ -60,6 +71,7 @@ struct Index {
                 "console.log('[KI5-ERR]', e&&e.message, '@', e&&e.filename, ':', e&&e.lineno);});" +
                 "var I=window.__TAURI_INTERNALS__;" +
                 "console.log('[KI5]', JSON.stringify({" +
+                "main:window.top===window," +
                 "internals:!!I, metadata:!!(I&&I.metadata)," +
                 "invoke:!!(I&&I.invoke), os:!!window.__TAURI_OS_PLUGIN_INTERNALS__," +
                 "bridge:!!window.__ohosBridge, ua:navigator.userAgent.slice(0,40)}));");

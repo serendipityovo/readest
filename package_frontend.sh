@@ -35,19 +35,48 @@ echo "[5/6] injecting shim tag into index.html..."
 python - <<'EOF' 2>/dev/null || sed -i 's#<head>#<head><script>window.__TAURI_INTERNALS__=window.__TAURI_INTERNALS__||{metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"},windows:["main"],webviews:["main"]}};</script><script src="/tauri_shim.js"></script>#' "/d/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/index.html"
 import io
 p = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/index.html"
+sp = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/tauri_shim.js"
 s = io.open(p, encoding="utf-8").read()
+shim_src = io.open(sp, encoding="utf-8").read()
 tag = '<script src="/tauri_shim.js"></script>'
-# KI-5 防御：早于 shim 执行的 chunk 读 internals.metadata 时兜底
-# （getCurrentWindow 的 E() 在冷启动 hook 挂载即调；shim 随后整体覆盖）
+# KI-5 竞态根治（D12 真机定位）：Next.js chunk 全部 <script async>，async 脚本
+# 下载完成即执行、不保证晚于阻塞式 <script src>——RawFileServer 并行响应时
+# 大 chunk 可能先于 shim 执行，internals/os_type 全 undefined（曾断 app
+# service init 与 file:// 导入链）。根治 = shim 内联（head 解析期同步执行，
+# 必然先于一切网络加载的 async 脚本），并移除外链标签防重复初始化。
+shim_inline = '<script>/*__TAURI_SHIM_INLINE__*/' + shim_src + '</script>'
+if '__TAURI_SHIM_INLINE__' not in s:
+    if tag in s:
+        s = s.replace(tag, shim_inline, 1)
+    else:
+        s = s.replace("</head>", shim_inline + '</head>', 1)
+# 竞态根治第二刀：async chunk 下载完成即可能抢在内联 shim 前执行（HTML
+# 规范允许 async 在解析中途插入执行）。改 defer——下载仍并行，执行严格
+# 按文档序，必然晚于 head 内联 shim。
+s = s.replace(' async="">', ' defer="">').replace(' async>', ' defer>')
+# 兜底（防早 chunk 读 metadata）：置于内联 shim 之前
 pre = ('<script>window.__TAURI_INTERNALS__=window.__TAURI_INTERNALS__'
        '||{metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"},'
        'windows:["main"],webviews:["main"]}};</script>')
-if tag not in s:
-    s = s.replace("<head>", "<head>" + pre + tag, 1)
-elif pre not in s:
-    s = s.replace(tag, pre + tag, 1)
+if pre not in s:
+    s = s.replace(shim_inline, pre + shim_inline, 1)
 io.open(p, "w", encoding="utf-8").write(s)
-print("injected")
+print("injected inline shim:", len(shim_src), "bytes")
+
+# D12 全 shell 加固：路由 shell（library.html 等）是硬导航/iframe 的装载
+# 目标——没有 shim 的 shell 里 app 二次启动曾致 getAppService reject
+# （os_type/invoke undefined）并干扰 file:// 导入链。所有 shell 一律注入
+# pre + 内联 shim + defer 化，与 index.html 等价。
+import glob
+for p in glob.glob(r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/*.html"):
+    if p.replace('\\', '/').endswith('/index.html'):
+        continue
+    s = io.open(p, encoding="utf-8").read()
+    if '__TAURI_SHIM_INLINE__' not in s:
+        s = s.replace('<head>', '<head>' + pre + shim_inline, 1)
+        s = s.replace(' async="">', ' defer="">').replace(' async>', ' defer>')
+        io.open(p, "w", encoding="utf-8").write(s)
+print("all route shells hardened")
 EOF
 
 echo "[6/6] writing buildstamp (drives incremental extraction on device)..."

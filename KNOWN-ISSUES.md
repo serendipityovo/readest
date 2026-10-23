@@ -27,11 +27,14 @@
 - **残余（D11 真机窗口攻，工具=DevEco webview devtools）**：①`Cannot read properties of undefined (reading 'metadata')`（堆栈 E=getCurrentWindow←subscribeSettingsSync 的 M）与 `reading 'os_type'`（app service init）**偶发于 onPageEnd 探针确认 internals 在位之后**——pre 兜底未治，疑似更早瞬态或另一上下文，hilog 拼图已到极限，devtools 现场调试优先②file:// SEND 导入未落盘（Open with book 后 metadata 错误中断 ingestFile 链）
 - **观察工具**：`hilog | grep ARKWEB-CONSOLE`；Index.ets onPageEnd 已内置 [KI5] 全局探针 + unhandledrejection 堆栈探针（KI5-REJ）
 
-### KI-7 @ohos.net.http 对外网 https 挂起（D11 真机重验：复现，根因改判网络环境）
-- 现象：download_file（gutenberg https）模拟器与**真机同象**——`request()` 无 resolve/reject、无超时回调；真机首启 ArkWeb 亦报 `ERR_CERT_COMMON_NAME_INVALID`
-- **D11 结论**：非平台 http 栈问题——两个独立证据（系统 http API 挂 + ArkWeb 证书报错）指向**网络环境对 gutenberg.org 不可达/证书劫持**；lab 侧 fetch/download 逻辑全验证
-- 处置：D12 download_file 用例加超时判定（15s 判 FAIL 不永挂）+ 换国内可达 URL（如清华镜像文件）复测——若可达则 KI-7 关闭（纯 gutenberg 不可达），若仍挂才按平台 bug 攻
-- SelfTest 网络组现状：fetch 用例 SKIP（rid 接力说明）+ download_file 用例（真网+真写盘）
+### KI-7 download_file 对外网 https 不落盘（D12 关闭：设备网络环境）
+- 现象：gutenberg / 清华镜像 https 在模拟器与真机均无响应；**rport 明文 http 到 PC 完全正常**（1.1MB 秒下）；系统 AppGallery 同报 cert 错误
+- **结论**：Clash 代理 TLS 拦截——环境问题非平台 bug。看门狗已加（download_file 20s 超时 reject 防永挂）；发布环境（无代理/正常网络）预期正常
+- SelfTest 网络组现状：fetch 用例 SKIP + download_file 用例（清华镜像 URL + 20s 看门狗）
+
+### KI-5（D12 关闭主项）
+- 双命名（D10.5 修复）+ iframe getter 转发 + 全 shell 加固 + 服务端 OS 兜底 + 缓存绕过（?v=buildstamp）——真机 REJ 群与 app service init 失败双清零
+- 残余已知项：sandbox iframe（无 allow-same-origin）内的代码无法注入（跨域）——真 Tauri 同象，非阻断
 
 ### KI-6 mock read_file 大书性能（lab-only，D10 验证轮发现）
 

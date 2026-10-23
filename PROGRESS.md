@@ -1,5 +1,30 @@
 # PROGRESS.md — 每日块C更新（死循环防护规则8）
 
+## D12 · 2026-10-23（真机窗口日）—— 端到端阅读链路全线打通（当日最大战果）
+
+### ① D12 验收达成：导入 → 阅读 → 翻页 → 重启进度恢复 全绿
+- **导入**：`aa start -A viewData -U file://<沙箱路径>` → 深链 pending→replay → importBook → **Books/<hash>/ + library.json 落盘** → "Opening books: 4d835ba4…"
+- **阅读**：阅读页渲染红楼梦正文（封面→第一回）
+- **翻页**：DevTools 派发 ArrowRight ×10 生效（uinput 键盘不达 web；鼠标 swipe 在封面页无效；**事件须派发到 document/body**——window.dispatchEvent 文档监听器收不到）
+- **进度恢复**：`config.json: progress [6,1600] + epubcfi(/6/4!/4/6[id00001],/1:600,/1:2041)` 落盘；重启自动恢复阅读页
+
+### ② 当日四大根因修复（每项独立可复现验证）
+1. **fs file-handle 协议组补全**（NativeBridge +19 case）：前端 bundle 调用面 26 个 fs 命令只实现了 7 个——`fs|open/read/seek/fstat/close/size/write/stat/rename/read_dir/lines/watch/...` 全补；**readest 私有协议**：read 顺序读+**尾 8 字节小端 u64 读取数**（0=EOF）、seek 数字 whence、write 参数 `data`（从 dist-js 反汇编确认）
+2. **iframe KI-5 残余根治**：shim 用 **getter 转发**（defineProperty 转发到主 window，非一次性赋值——shim 后段整体重赋 internals 时旧引用会失效）+ **打包全 shell 加固**（library.html 等所有路由 shell 注入 pre+内联 shim+defer 化）+ **RawFileServer HTML 响应服务端注入 OS 兜底**（iframe 导航后 window 重建，load 事件注入晚于 defer 脚本）——REJ 群与 "Failed to initialize app service" 双清零
+3. **ArkWeb HTTP 缓存根治**：加载 URL 带 `?v=<buildstamp>`（曾供旧 index.html 造成幽灵第二文档+新旧 shim 混跑）+ 全响应 `Cache-Control: no-store`
+4. **os_type: android → windows**：readest openFile 对 android 走 RemoteFile（rangefile Range 请求——本环境返回空），对 windows 直接走 NativeFile（fs|open/fstat——bridge 已实现且 DevTools 动态验证）。**设备是 PC，windows 语义全链正确**（fix9: open×51/fstat×9/read×42/copy×3/零失败）
+
+### ③ KI-7 关闭（定性：设备网络环境）
+download_file 对 gutenberg/清华镜像 https 均不落盘；**rport 明文 http 到 PC 完全正常**（1.1MB epub 秒下）；系统服务同报 cert 错误 → **Clash 代理 TLS 拦截**，非平台 http 栈 bug。看门狗已加（20s 超时防永挂）
+
+### ④ 工具沉淀
+- **DevTools 遥控**（scripts/devtools_eval.mjs）：`setWebDebuggingAccess(true)` + `hdc fport tcp:9222 localabstract:webview_devtools_remote_<pid>` → 页面内任意 JS（awaitPromise 返回值会丢——用 `window.__R` 全局暂存模式）；**fport 换绑前先 fport rm**（app 重启 pid 变）
+- **沙箱路径真相**：web/app 视角 `/data/storage/el2/base/...`（mount 命名空间），hdc shell 视角 `/data/app/el2/100/base/...`；shell/hdc file send **均不能写 app 沙箱**——入沙箱唯一路径 = download_file（rport）或 app 自身
+- 鼠标遥控：`uinput -M -m -5000 -5000` 钉角 + 相对移动 + `-c 0` 点击（-T 触摸在 PC 模式无效）
+
+### 回归
+SelfTest 真机 60/64 + 4 SKIP（零回归）；导入链 3 轮稳定
+
 ## D11 · 2026-10-22（真机窗口日）—— 首启验收通过 + SelfTest 真机基线达成
 
 ### ① 真机链路打通（全流程）
