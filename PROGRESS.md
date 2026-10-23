@@ -389,3 +389,10 @@ GBK TXT（王国维三境界，349B GBK 编码）+ 竖排 EPUB（writing-mode:ve
 - resolve_directory 收到的是**数字枚举**（13=AppConfig/14=AppData/15=AppLocalData/16=AppCache/19=Executable，@tauri-apps/api path.d.ts），现有按字符串映射的实现需改
 - write_text_file 内容在设备端以字节数组 JSON（{0:b,1:b...}）到达，ArkTS 侧需按 UTF-8 还原
 - 虚拟主机响应（RawFileServer）建议加 Cache-Control 头，避免 ArkWeb 端重蹈 lab 缓存坑
+
+## 工程审计 · 2026-10-24 深夜（用户指令：SE 视角全量复检）
+**战果①（真缺陷）**：shim 的 iframe getter 转发块（D12 与 shell 加固同批部署）实为有害无益——真机 KI-5 由全 shell 加固+缓存绕过治愈；该块致 lab reader 探针确定性挂起（"加载中…"，A/B 三轮定位）。已移除，两环境回归 7/7 双绿，真机复验 KI5 全 true/open×48 零回归
+**战果②（语义漂移）**：mock_bridge 缺 fs file-handle 组（D12 只补了真机）——已补齐（readest 私有协议：read 顺序读+尾 8B LE）
+**指标**：真机冷启动 2.0s（达标线 5s）
+**明日接续清单**：C 书内搜索 UI（worker 机制已由 pdf.worker 等价验证，差 UI 驱动一轮）/ E 损坏 epub 健壮性 / D TOC 跳转 / H assembleApp .app 产物 / F 主题切换 / I 高亮标注（turso 写）
+**环境备忘**：重装后 settings 回默认（openBookInNewWindow=true → 主窗口 devtools 幽灵）；hdc 坏态 kill+start 即愈
