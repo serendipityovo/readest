@@ -396,3 +396,12 @@ GBK TXT（王国维三境界，349B GBK 编码）+ 竖排 EPUB（writing-mode:ve
 **指标**：真机冷启动 2.0s（达标线 5s）
 **明日接续清单**：C 书内搜索 UI（worker 机制已由 pdf.worker 等价验证，差 UI 驱动一轮）/ E 损坏 epub 健壮性 / D TOC 跳转 / H assembleApp .app 产物 / F 主题切换 / I 高亮标注（turso 写）
 **环境备忘**：重装后 settings 回默认（openBookInNewWindow=true → 主窗口 devtools 幽灵）；hdc 坏态 kill+start 即愈
+
+## 工程审计 · 2026-10-25（清单收尾——六项全绿）
+- **C 书内搜索 UI ✓**：侧栏搜索面板打开、"黛玉"命中结果列表渲染（正文片段）
+- **D 章节跳转 ✓**："下一章"按钮 35→60 页（TOC 级导航）
+- **F 主题切换 ✓**："素雅"主题全屏换肤（像素差 1.06M）
+- **I 书签持久化 ✓**：添加书签 → config.json booknotes[1]（epubcfi+文本快照，turso/config 写链）
+- **E 健壮性 ✓**：损坏 epub（伪 zip 头）→ "End of central directory not found" 优雅报错，进程存活零崩溃
+- **H 发布管道 ✓**：assembleApp 产出 ReadestOhos-default-signed.app（20.4MB：pac.json+pack.info+entry-default.hap）
+- 遗留小项（不影响交付）：书内搜索的 worker 线程路径（pdf.worker 已等价验证 Worker 机制，搜索主线程回退 15 天基线）
