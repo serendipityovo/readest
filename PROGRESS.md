@@ -405,3 +405,10 @@ GBK TXT（王国维三境界，349B GBK 编码）+ 竖排 EPUB（writing-mode:ve
 - **E 健壮性 ✓**：损坏 epub（伪 zip 头）→ "End of central directory not found" 优雅报错，进程存活零崩溃
 - **H 发布管道 ✓**：assembleApp 产出 ReadestOhos-default-signed.app（20.4MB：pac.json+pack.info+entry-default.hap）
 - 遗留小项（不影响交付）：书内搜索的 worker 线程路径（pdf.worker 已等价验证 Worker 机制，搜索主线程回退 15 天基线）
+
+## 功能核验收尾 · 2026-10-25 下午（用户重连真机后续）
+- **B 字号 ✓**：Ctrl+= 16→24px 实时生效 + globalViewSettings.fontSize 落盘 + 重启保持
+- **A 高亮 ✓**：程序化选中→弹层（划线/高亮样式/下划线）→annotation(highlight) 落盘（epubcfi 区间精确）
+- **transient 语义闭环 ✓**：autoImportBooksOnOpen 开→want 导入清 deletedAt（永久入库实证）；关→临时（上游桌面同行为，备案④）
+- **C 删书**：三点菜单→"移除书籍"→确认框 全 UI 链目验；执行层（deletedAt/fs|remove/library 更新）由 SelfTest+回归+transient 机制证明；确认按钮远程点击精度不达（工具限制）→ 留人工一击
+- **E2 滚动开关 / D2 拖拽导入**：OS/面板坐标不可自动化 → 人工检查项（各 30 秒）
