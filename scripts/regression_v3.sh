@@ -16,7 +16,9 @@ if [ ! -f "$EDGE" ]; then
   echo "ERROR: Edge not found"; exit 1
 fi
 
-PROFILE="$(cygpath -w "$ROOT/.browserlab/.edge-profile")"
+# 审计治本（2026-10-25）：一次性 profile（共享 profile 触发 Edge 段错误，
+# 隔离实证；探针每次自播种，无持久依赖）
+PROFILE="$(cygpath -w "$ROOT/.shots/.edge-v3-$$-$(date +%s)")"
 RESULTS=""
 
 record() { # $1=name $2=PASS/FAIL

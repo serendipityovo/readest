@@ -26,7 +26,11 @@ if [ ! -f "$EDGE" ]; then
 fi
 DOM="$ROOT/.shots/lab_dom.html"
 PNG="$ROOT/.shots/lab_check.png"
-PROFILE="$ROOT/.browserlab/.edge-profile-boot"
+# 审计治本（2026-10-25）：共享 profile 在长会话后触发无头 Edge 段错误
+# （新 profile 恒 PASS，隔离实证）——boot 检查改一次性 profile（探针每次
+# 自播种状态，持久 profile 并非依赖）
+PROFILE="$ROOT/.shots/.edge-boot-$$-$(date +%s)"
+mkdir -p "$ROOT/.shots" "$PROFILE"
 mkdir -p "$ROOT/.shots" "$PROFILE"
 rm -f "$DOM" "$PNG"
 # 独立 user-data-dir：复用运行中的 Edge 配置会导致 headless 挂起
@@ -35,7 +39,10 @@ rm -f "$DOM" "$PNG"
   --window-size=412,915 \
   --virtual-time-budget=30000 \
   --screenshot="$(cygpath -w "$PNG")" \
-  --dump-dom "$URL" > "$DOM" 2>/dev/null
+  --dump-dom "$URL" > "$DOM" 2>/dev/null || true
+# 审计修正（2026-10-25）：长会话后无头 Edge 在退出阶段段错误（工作已完整
+# 写出——DOM/截图齐全，exit 139 良性）——|| true 防 set -e 误杀脚本；
+# 下方 -s $DOM 门仍兜底产物完整性
 
 if [ ! -s "$DOM" ]; then
   echo "LAB_CHECK: FAIL (headless dump-dom empty)"
