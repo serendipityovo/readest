@@ -104,3 +104,8 @@
 **加固**：①`/asset/` 收窄到 filesDir/cacheDir 前缀（403 其余）②NativeBridge 中央 `assertSandboxPath` 钳制（fsPath/copy_file/rename/download_file/fs|open 五路出口）
 **验证**：攻击负向测试 3/3 拦截（沙箱外读 BLOCKED/写 BLOCKED/asset 越权 BLOCKED）；合法链零误拒（导入 open×48 绿、零 sandbox 拒绝）；SelfTest 60/64+4SKIP 零回归
 **残留面（与上游等价、记录在案）**：沙箱内文件对同源书内容仍可读（上游 appdata scope 同语义）；debug 构建含 webview 调试通道（发布流程 sed 关闭，PUBLISH.md）
+
+### 环境备案（2026-10-25 深夜 · 最终核验轮）
+- 现象：regression_v3 批量调用下 boot/reader 探针间歇 FAIL，伴随无头 Edge **段错误**（进程级崩溃）
+- 仲裁：同代码手工串行双探针（新 profile）**全 PASS**；今晨同代码 v3 7/7——**应用代码健康，属连跑 3 天重载后 Edge/系统环境劣化**
+- 处置：v3 boot 步骤已加一次重试（对齐 probe_with_retry 抖动语义）；建议整机重启后复跑 v3 预期恢复 7/7

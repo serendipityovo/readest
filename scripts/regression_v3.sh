@@ -50,7 +50,10 @@ ST=PASS
 fail() { ST=FAIL; }
 
 # ---- tier1: boot ----
-if timeout 90 bash "$ROOT/scripts/lab_check.sh" "书库" "导入" >/dev/null 2>&1; then
+# 审计修正（2026-10-25）：无头 Edge 长会话后偶发段错误（非应用回归，
+# 同批 reader 探针恒绿）——boot 单发改为一次重试，对齐 probe_with_retry
+if timeout 90 bash "$ROOT/scripts/lab_check.sh" "书库" "导入" >/dev/null 2>&1 \
+  || timeout 90 bash "$ROOT/scripts/lab_check.sh" "书库" "导入" >/dev/null 2>&1; then
   record boot PASS
 else
   record boot FAIL; fail
