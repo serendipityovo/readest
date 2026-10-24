@@ -76,6 +76,18 @@ export class RawFileServer {
       if (path !== '' && !path.startsWith('/')) {
         path = `/${path}`;
       }
+      // 安全审计加固（2026-10-25）：asset 通道此前接受任意绝对路径——同源
+      // iframe（如恶意书籍内容）可借此拉取 settings.json 等沙箱敏感文件。
+      // 上游 Tauri asset 协议带 scope 白名单；此处等价收窄到 filesDir/缓存根
+      const assetAllowed: boolean =
+        (this.filesRoot.length > 0 && path.startsWith(this.filesRoot))
+        || (this.cacheRoot.length > 0 && path.startsWith(this.cacheRoot));
+      if (!assetAllowed) {
+        response.setResponseCode(403);
+        response.setReasonMessage('Forbidden');
+        response.setResponseData('forbidden');
+        return response;
+      }
     }
     // decoded path must never climb out of the sandbox roots
     if (path.includes('..')) {

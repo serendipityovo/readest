@@ -659,7 +659,9 @@ export class NativeBridge {
         if (!to.startsWith('/')) {
           to = this.pathWithBase(to, args['options'], 'toPathBaseDir');
         }
-        this.fsEnsureDir(this.parentDir(this.normalizePath(to)));
+        from = this.assertSandboxPath(this.normalizePath(from));
+        to = this.assertSandboxPath(this.normalizePath(to));
+        this.fsEnsureDir(this.parentDir(to));
         try {
           fs.copyFileSync(from, to);
         } catch (e) {
@@ -673,7 +675,7 @@ export class NativeBridge {
       //      @tauri-apps/plugin-fs v2 guest-js。 ----
       case 'plugin:fs|open':
       case 'plugin:fs|create': {
-        const fhPath: string = this.fsPath(args);
+        const fhPath: string = this.assertSandboxPath(this.fsPath(args));
         let mode: number = bareCmd.endsWith('create')
           ? fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE
           : fs.OpenMode.READ_ONLY;
@@ -830,6 +832,8 @@ export class NativeBridge {
         if (!rTo.startsWith('/')) {
           rTo = this.pathWithBase(rTo, args['options'], 'toPathBaseDir');
         }
+        rFrom = this.assertSandboxPath(this.normalizePath(rFrom));
+        rTo = this.assertSandboxPath(this.normalizePath(rTo));
         try {
           fs.renameSync(rFrom, rTo);
         } catch (e) {
@@ -1208,7 +1212,7 @@ export class NativeBridge {
       // event (books are a few MB; readest's UI tolerates chunk-less updates).
       case 'download_file': {
         const dlUrl: string = String(args['url'] ?? '');
-        const dlPath: string = this.normalizePath(String(args['filePath'] ?? ''));
+        const dlPath: string = this.assertSandboxPath(this.normalizePath(String(args['filePath'] ?? '')));
         hilog.info(0x0107, 'readestD9', 'download_file url=%{public}s path=%{public}s',
           dlUrl.slice(0, 60), dlPath.slice(0, 70));
         const dlHeaderRec: Record<string, string> = {};
@@ -1581,7 +1585,7 @@ export class NativeBridge {
         // unreadable options: treat path as-is
       }
     }
-    return this.normalizePath(p);
+    return this.assertSandboxPath(this.normalizePath(p));
   }
 
   /** Tauri BaseDirectory enum (path.d.ts) -> OHOS sandbox dir. */
@@ -1596,6 +1600,27 @@ export class NativeBridge {
       return `${this.context.filesDir}/logs`; // AppLog
     }
     return this.context.filesDir; // AppConfig / AppData / AppLocalData / others
+  }
+
+  /**
+   * 安全审计加固（2026-10-25）：桥接 fs 命令的中央沙箱钳制——绝对路径
+   * 仅允许 filesDir / cacheDir 前缀（全部合法业务路径都在这两根下：
+   * settings.json、Readest/Books、inbox、logs、Cache 缩略图等）。同源
+   * iframe（恶意书籍内容）此前可借 fs 命令读写沙箱内任意文件；上游
+   * Tauri 有 capability scope 等价约束。OHOS fileIo 本身已把进程限制在
+   * 应用沙箱，此钳制防御沙箱内越权（如篡改 settings/library）。
+   */
+  private assertSandboxPath(p: string): string {
+    if (!this.context) {
+      return p;
+    }
+    const files: string = this.context.filesDir;
+    const cache: string = this.context.cacheDir;
+    const ok: boolean = p.startsWith(files) || p.startsWith(cache);
+    if (!ok) {
+      throw new Error(`path outside app sandbox: ${p.slice(0, 60)}`);
+    }
+    return p;
   }
 
   private normalizePath(p: string): string {

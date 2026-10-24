@@ -98,3 +98,9 @@
 - 机制（bundle ingestFile 取证）：桌面语义下（os_type=windows），`transient = !isMobile && !autoImportBooksOnOpen`——**"打开时自动导入书籍"关闭时，file-association/want 打开的书按 transient 导入**（`deletedAt` 立即置位）：能读、有进度/书签/高亮，但**不进书架**。与上游桌面 readest 行为逐位一致
 - 处置：非缺陷。需要 want/双击打开永久入库 → 设置开启"打开时自动导入书籍"；或用导入按钮/picker 导入（非 transient）
 - 关联：删除书籍的 deletedAt 机制同链路（C 项验证时顺带证实标记机制工作正常）
+
+### 安全审计加固记录（2026-10-25 最苛刻复查）
+**发现**：①RawFileServer `/asset/` 通道接受任意绝对路径（同源恶意书内容可拉取 settings.json 等沙箱敏感文件——上游 Tauri asset 协议有 scope 白名单，此前未复刻）②桥接 fs 命令（read/write/copy/rename/download/open）对绝对路径无域约束
+**加固**：①`/asset/` 收窄到 filesDir/cacheDir 前缀（403 其余）②NativeBridge 中央 `assertSandboxPath` 钳制（fsPath/copy_file/rename/download_file/fs|open 五路出口）
+**验证**：攻击负向测试 3/3 拦截（沙箱外读 BLOCKED/写 BLOCKED/asset 越权 BLOCKED）；合法链零误拒（导入 open×48 绿、零 sandbox 拒绝）；SelfTest 60/64+4SKIP 零回归
+**残留面（与上游等价、记录在案）**：沙箱内文件对同源书内容仍可读（上游 appdata scope 同语义）；debug 构建含 webview 调试通道（发布流程 sed 关闭，PUBLISH.md）
