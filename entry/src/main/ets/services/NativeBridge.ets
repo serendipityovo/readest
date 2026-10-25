@@ -109,6 +109,7 @@ interface SuccessResult { success: boolean }
 interface PositionResult { position: number }
 interface TtsEventPayload { utteranceId: string; code: string; message: string; mark: string | null }
 interface FilePickerEvent { uris: string[] }
+interface WindowEntry { label: string }
 interface AmbientEvent { lux: number }
 interface StatusResult { status: string }
 
@@ -1030,6 +1031,13 @@ export class NativeBridge {
         return null; // OHOS 无"在文件夹中显示"系统 API；前端容错隐藏入口
       }
       case 'set_window_title':
+      case 'plugin:window|get_all_windows': {
+        // Tauri 语义：WindowEntry[]。本移植单窗口——恒报 main（与 shim
+        // metadata.currentWindow.label 一致）。useOpenWithBooks 等对返回值
+        // 直接 .map/.sort，null 会 TypeError（真机 release 回归实测）
+        const wins: WindowEntry[] = [{ label: 'main' }];
+        return wins;
+      }
       case 'plugin:window|set_title': {
         // ArkUI 窗口标题由应用名固定；前端书名标题条自渲染，此处形状应答
         return null;

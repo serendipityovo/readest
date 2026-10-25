@@ -47,6 +47,24 @@ struct Index {
     }
     hilog.info(0x0107, 'readestD9', 'privacy check needed=%{public}s filesDir=%{public}s',
       String(this.privacyNeeded), context.filesDir);
+    // 单窗口移植默认值：全新安装时种子 openBookInNewWindow=false——桌面
+    // 上游默认 true 会走"新窗口开书"路径（WebviewWindow 创建），本移植
+    // 无多窗口能力，将静默无反应。已存在的 settings.json 不动（尊重用户
+    // 设置）。存在性判断用 statSync（accessSync 本机不可靠，见上）
+    try {
+      fs.statSync(`${context.filesDir}/settings.json`);
+    } catch (e) {
+      try {
+        const seedF: fs.File = fs.openSync(`${context.filesDir}/settings.json`,
+          fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+        fs.writeSync(seedF.fd, '{"openBookInNewWindow":false}');
+        fs.closeSync(seedF.fd);
+        hilog.info(0x0107, 'readestD9', 'settings seeded: openBookInNewWindow=false');
+      } catch (e2) {
+        hilog.warn(0x0107, 'readestD9', 'settings seed failed: %{public}s',
+          JSON.stringify(e2).slice(0, 120));
+      }
+    }
     this.fileServer = new RawFileServer(context);
     nativeBridge.setController(this.controller, context);
     this.fileServer.extractIfNeeded((done: number, total: number): void => {
