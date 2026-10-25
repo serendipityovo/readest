@@ -1,6 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { common, Want } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { nativeBridge } from '../services/NativeBridge';
 import { RawFileServer } from '../services/RawFileServer';
 
@@ -10,7 +11,7 @@ const BOOKS_HOST_PREFIX: string = 'http://readest.ohos.internal';
 // 或自建托管页，政策口径见 docs/PRIVACY-POLICY.md）
 const PRIVACY_URL: string = 'https://readest.com/privacy';
 // 上架审核：webview 调试通道开关（发布构建打包脚本翻成 false）
-const DEBUG_WEB_CHANNEL: boolean = true;
+const DEBUG_WEB_CHANNEL: boolean = false;
 
 @Entry
 @Component
@@ -36,11 +37,16 @@ struct Index {
       }
     }
     // 上架审核硬项②：首次启动隐私弹窗（国内市场标准要求；同意标记落盘）
+    // 注意：本机 API23 的 fs.accessSync 对缺失文件不抛错且返回真值（实测
+    // 2026-10-25），不能用作存在性判断；statSync 缺失必抛 13900002
     try {
-      this.privacyNeeded = !fs.accessSync(`${context.filesDir}/privacy.accepted`);
+      fs.statSync(`${context.filesDir}/privacy.accepted`);
+      this.privacyNeeded = false; // 标记存在：已同意过
     } catch (e) {
-      this.privacyNeeded = true;
+      this.privacyNeeded = true; // 无标记：首启弹窗
     }
+    hilog.info(0x0107, 'readestD9', 'privacy check needed=%{public}s filesDir=%{public}s',
+      String(this.privacyNeeded), context.filesDir);
     this.fileServer = new RawFileServer(context);
     nativeBridge.setController(this.controller, context);
     this.fileServer.extractIfNeeded((done: number, total: number): void => {
@@ -62,8 +68,10 @@ struct Index {
       const f: fs.File = fs.openSync(`${context.filesDir}/privacy.accepted`,
         fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
       fs.closeSync(f.fd);
+      hilog.info(0x0107, 'readestD9', 'privacy accepted marker written');
     } catch (e) {
-      // 标记写失败也放行（避免卡死首启），下次再弹
+      hilog.error(0x0107, 'readestD9', 'privacy marker write failed: %{public}s',
+        JSON.stringify(e).slice(0, 200));
     }
     this.privacyNeeded = false;
   }

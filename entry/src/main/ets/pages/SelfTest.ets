@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { nativeBridge } from '../services/NativeBridge';
 
 /**
@@ -119,12 +120,15 @@ struct SelfTest {
     const c: TestCase = this.cases[i];
     if (c.skip !== undefined) {
       this.rows[i] = { result: `SKIP: ${c.skip}`, running: false };
+      hilog.info(0x0107, 'readestD9', 'selftest #%{public}d %{public}s => SKIP', i, c.cmd);
       return;
     }
     this.rows[i] = { result: '…', running: true };
     const out: string = await nativeBridge.testInvoke(c.cmd, c.args);
     const shown: string = out.length > 160 ? `${out.slice(0, 160)}…` : out;
     this.rows[i] = { result: shown, running: false };
+    hilog.info(0x0107, 'readestD9', 'selftest #%{public}d %{public}s => %{public}s',
+      i, c.cmd, out.slice(0, 120));
   }
 
   async runAll(): Promise<void> {
