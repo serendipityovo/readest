@@ -29,7 +29,7 @@
 
 ### KI-7 download_file 对外网 https 不落盘（D12 关闭：设备网络环境）
 - 现象：gutenberg / 清华镜像 https 在模拟器与真机均无响应；**rport 明文 http 到 PC 完全正常**（1.1MB 秒下）；系统 AppGallery 同报 cert 错误
-- **结论**：Clash 代理 TLS 拦截——环境问题非平台 bug。看门狗已加（download_file 20s 超时 reject 防永挂）；发布环境（无代理/正常网络）预期正常
+- **结论**：<local-proxy> 代理 TLS 拦截——环境问题非平台 bug。看门狗已加（download_file 20s 超时 reject 防永挂）；发布环境（无代理/正常网络）预期正常
 - SelfTest 网络组现状：fetch 用例 SKIP + download_file 用例（清华镜像 URL + 20s 看门狗）
 
 ### KI-5（D12 关闭主项）

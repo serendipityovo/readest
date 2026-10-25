@@ -1,30 +1,33 @@
 {
+  // 本文件为公开仓库版本：签名材料不入库（signing/ 已 gitignore）。
+  // 本机构建时把此文件替换为本地私有版（结构见 build-profile.signing.example.json5），
+  // 或在 DevEco「项目结构 → 签名配置」里配置后由 IDE 自动生成本地加密串。
   "app": {
     "signingConfigs": [
       {
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.cer",
+          "certpath": "",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B36A47ED316C6B5CC95E5A360DC541CB580389801952E790C38C535454A2988F791BC425238F522",
-          "profile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p7b",
+          "keyPassword": "",
+          "profile": "",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
-          "storePassword": "0000001B01C420311C39ACF6D710FFDF9DAED3ABF93297942A75460DAB3F604A4F07818615999300550256"
+          "storeFile": "",
+          "storePassword": ""
         }
       },
       {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "D:/Projects/ReadestOhos/signing/release.p12",
-          "storePassword": "0000001C74341DBE82ABC64153FB16120526F58104E35E827E0DEC4E99FCEE4D77A606EAB0852EEC07468E20",
+          "storeFile": "signing/release.p12",
+          "storePassword": "",
           "keyAlias": "readest-release",
-          "keyPassword": "0000001CB8A27AA7B69C08D8CF9A982093CBC365EB791B58CC07C14540F329F52BE2EDFCDE86BBE96DD71EFD",
+          "keyPassword": "",
           "signAlg": "SHA256withECDSA",
-          "profile": "D:/Projects/ReadestOhos/signing/release.p7b",
-          "certpath": "D:/Projects/ReadestOhos/signing/release.cer"
+          "profile": "signing/release.p7b",
+          "certpath": "signing/release.cer"
         }
       }
     ],

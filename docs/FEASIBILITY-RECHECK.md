@@ -124,7 +124,7 @@ D11 插机+签名 55min ｜ D12–D14 验收点各 15–30min ｜ D15 发布签�
 - **D12** 端到端链路：导入（file:// want→NativeFile→copy→书库）→阅读→翻页→重启进度恢复（progress+epubcfi 落盘）全绿；四大根因修复（fs file-handle 协议组 +19 case / iframe getter 转发+全 shell 加固 / 缓存绕过 ?v=buildstamp / os_type windows）
 - **D13** TTS HiAI 离线引擎真机朗读（init/check/speak→speakInner）+ 剪贴板
 - **D14** 格式矩阵 10/10（EPUB×5 + MOBI + AZW3 + PDF + GBK TXT + 竖排 EPUB，竖排渲染截屏确认）
-- **KI-7 关闭**：Clash 代理 TLS 拦截（环境），rport 明文 http 正常——非平台 bug
+- **KI-7 关闭**：<local-proxy> 代理 TLS 拦截（环境），rport 明文 http 正常——非平台 bug
 - **回归**：lab v3 七项 PASS + 真机 SelfTest 60/64+4SKIP
 - **git**：9ce1ba6 → 3e1f085 → 3cb69bd（tag d13-d14-device-green）
 - 遗留（后续增强，不阻塞交付）：热启动 want 在 reader 页落 pending 无 listener（冷启动正常）、沙箱 iframe（无 allow-same-origin）注入不可达（真 Tauri 同象）、Edge TTS 在线引擎（网络环境阻断）

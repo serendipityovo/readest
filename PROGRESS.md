@@ -3,7 +3,7 @@
 ## D13+D14 · 2026-10-23（真机窗口日）—— TTS 真机核销 + 格式矩阵 10/10 全绿
 
 ### D13 ① TTS 真机核销（HiAI 离线引擎链全通）
-DevTools 协议级直测（不经 UI）：`plugin:native-tts|init {success:true}` → `check {success:true}` → `speak {utteranceId:"ohos-tts-1"}`——hilog 证 **HiAI_OfflineTtsService（华为离线语音）接收并开始合成朗读**（"speak method, engineName: com.readest.app... start speakInner"）——**离线引擎不依赖网络，不受 Clash 影响**。Edge 在线引擎=网络阻断（同 KI-7 类）；listVoices 401=在线语音列表接口（非阻断）
+DevTools 协议级直测（不经 UI）：`plugin:native-tts|init {success:true}` → `check {success:true}` → `speak {utteranceId:"ohos-tts-1"}`——hilog 证 **HiAI_OfflineTtsService（华为离线语音）接收并开始合成朗读**（"speak method, engineName: com.readest.app... start speakInner"）——**离线引擎不依赖网络，不受 <local-proxy> 影响**。Edge 在线引擎=网络阻断（同 KI-7 类）；listVoices 401=在线语音列表接口（非阻断）
 - 前置：settings.json 写 `openBookInNewWindow:false` + `localStorage.ttsPreferredVoices.preferredClient='native-tts'`（均 DevTools invoke 完成）
 
 ### D13 ② 剪贴板 + SelfTest
@@ -33,7 +33,7 @@ openBookInNewWindow=true 时阅读器是第二 ArkUI 窗口——**无独立 dev
 4. **os_type: android → windows**：readest openFile 对 android 走 RemoteFile（rangefile Range 请求——本环境返回空），对 windows 直接走 NativeFile（fs|open/fstat——bridge 已实现且 DevTools 动态验证）。**设备是 PC，windows 语义全链正确**（fix9: open×51/fstat×9/read×42/copy×3/零失败）
 
 ### ③ KI-7 关闭（定性：设备网络环境）
-download_file 对 gutenberg/清华镜像 https 均不落盘；**rport 明文 http 到 PC 完全正常**（1.1MB epub 秒下）；系统服务同报 cert 错误 → **Clash 代理 TLS 拦截**，非平台 http 栈 bug。看门狗已加（20s 超时防永挂）
+download_file 对 gutenberg/清华镜像 https 均不落盘；**rport 明文 http 到 PC 完全正常**（1.1MB epub 秒下）；系统服务同报 cert 错误 → **<local-proxy> 代理 TLS 拦截**，非平台 http 栈 bug。看门狗已加（20s 超时防永挂）
 
 ### ④ 工具沉淀
 - **DevTools 遥控**（scripts/devtools_eval.mjs）：`setWebDebuggingAccess(true)` + `hdc fport tcp:9222 localabstract:webview_devtools_remote_<pid>` → 页面内任意 JS（awaitPromise 返回值会丢——用 `window.__R` 全局暂存模式）；**fport 换绑前先 fport rm**（app 重启 pid 变）
@@ -238,7 +238,7 @@ GBK TXT（王国维三境界，349B GBK 编码）+ 竖排 EPUB（writing-mode:ve
 - 穿透代价：改 fork cfg + ohos runtime + NAPI 绑定 + 长期补丁面 ≈ **≥3 天**
 - B 计划等价性：五天 lab 已证前端+ArkTS 全覆盖（fs/turso/解析/PDF/搜索/标注/事件全绿），Rust 无不可替代残留
 - **决断：B 计划**（ARCHITECTURE.md 定案，含重启条件记录）
-- 环境注记：Clash 代理 7897 今日失联，直连可用（gutenberg 直连下载成功）；cargo offline 缓存 873 crates 足够
+- 环境注记：<local-proxy> 代理 7897 今日失联，直连可用（gutenberg 直连下载成功）；cargo offline 缓存 873 crates 足够
 
 ## D5 · 2026-10-16（块A/B/C 全部完成）—— 里程碑达成：设置/进度/标注/搜索 lab 全通
 

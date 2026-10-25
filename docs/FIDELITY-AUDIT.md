@@ -26,7 +26,7 @@
 **等价实现**：文件选择器（DocumentViewPicker）、窗口管理（ArkUI 单窗+新窗口）、持久化（relationalStore≈SQLite）、密钥链（asset kit）。
 **原版也无（桌面平台）**：生物认证、震动、Apple/CarPlay/Boox/iCloud 生态件。
 **已知降级（后续增强）**：localsend LAN 直传（原版有）、内置网页浏览器（原版桌面有）、自动更新器（已答 is_updater_disabled 使前端优雅隐藏）、原生 Rust 解析加速（JS 回退，大书性能差——KI-6）。
-**环境相关（非代码问题）**：外网 https（Clash TLS 拦截，rport 明文正常）、Edge 在线 TTS（同因）。
+**环境相关（非代码问题）**：外网 https（<local-proxy> TLS 拦截，rport 明文正常）、Edge 在线 TTS（同因）。
 
 ## 运行时证据
 - 真机 census：51 命令实调，除环境类（fetch_send/download 外网）外全部 resolve ok
