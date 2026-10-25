@@ -48,7 +48,7 @@ Readest OHOS 是一款本地优先的电子书阅读器，为鸿蒙 PC 而来。
 
 | 表单 | 填写 |
 |---|---|
-| 隐私声明 | **AGC 隐私托管**（推荐）：按 docs/PRIVACY-POLICY.md 口径填模板，政策与用户协议由 AGC 生成托管；生成后把 URL 发回替换应用内占位 |
+| 隐私声明 | ✅ 已用 AGC 隐私托管生成（2026-10-25），版本信息里选择该托管内容。托管 URL：https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2069224619277081280 （备案表单同用此 URL） |
 | 隐私标签 | 基本不收集个人信息；可选项：匿名使用统计（用户主动开启） |
 | 权限用途（INTERNET） | 访问用户主动配置的在线书城（OPDS）、在线词典查询、云同步、系统语音合成资源 |
 | AI 功能声明 | 无 AI 功能（TTS 为系统语音合成） |
