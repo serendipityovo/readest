@@ -353,6 +353,48 @@ export class NativeBridge {
     }
   }
 
+  /**
+   * picker URI（临时授权、沙箱外）→ 沙箱副本路径。fs.open 支持 picker
+   * 返回的 URI；拷贝到 filesDir/imports/ 后路径对 assertSandboxPath 合法。
+   * 注意：copyFile(fd,fd) 对 URI 打开的源 fd 静默产出 0 字节（真机实测
+   * 2026-10-25），必须用 readSync/writeSync 缓冲循环。
+   */
+  private async importPickedUriToSandbox(uri: string): Promise<string> {
+    const clean: string = decodeURIComponent(uri.split('?')[0]);
+    const name: string = clean.substring(clean.lastIndexOf('/') + 1) || `picked_${Date.now()}.bin`;
+    const dir: string = `${this.context!.filesDir}/imports`;
+    try {
+      fs.mkdirSync(dir, true);
+    } catch (e) {
+      // 已存在
+    }
+    const dst: string = `${dir}/${name}`;
+    const src: fs.File = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    const dstF: fs.File = fs.openSync(dst,
+      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+    let copied: number = 0;
+    try {
+      const buf: ArrayBuffer = new ArrayBuffer(262144);
+      for (;;) {
+        const n: number = fs.readSync(src.fd, buf);
+        if (n <= 0) {
+          break;
+        }
+        fs.writeSync(dstF.fd, buf.slice(0, n));
+        copied += n;
+      }
+    } finally {
+      fs.closeSync(src);
+      fs.closeSync(dstF);
+    }
+    if (copied === 0) {
+      fs.unlinkSync(dst);
+      throw new Error(`picked uri yielded 0 bytes: ${uri.slice(0, 80)}`);
+    }
+    hilog.info(0x0107, 'readestD9', 'picked copied %{public}d bytes -> %{public}s', copied, dst);
+    return dst;
+  }
+
   private async dispatch(cmd: string, args: Record<string, Object>): Promise<Object | null> {
     hilog.info(0x0107, 'readestD9', 'dispatch cmd=%{public}s len=%{public}d last=%{public}d',
       cmd.slice(0, 60), cmd.length, cmd.length > 0 ? cmd.charCodeAt(cmd.length - 1) : 0);
@@ -932,8 +974,50 @@ export class NativeBridge {
         return null;
       }
       case 'plugin:dialog|open': {
-        // 统一走 show_file_picker（前端本就优先 native-bridge 版）
-        return this.dispatch('show_file_picker', {});
+        // 桌面语义（os_type=windows）前端 await 本命令返回值拿路径
+        // （useFileSelector→selectFileTauri→openDialog multiple:true，
+        // 返回 string|string[]|null）；Android 的事件版走 show_file_picker。
+        // picker URI 仅临时授权且在沙箱外，这里拷入沙箱 imports/ 再返回
+        // 沙箱路径，保证后续 fs|open 过 assertSandboxPath
+        const dlgP: Record<string, Object> = this.payloadOf(args);
+        const multiple: boolean = dlgP['multiple'] !== undefined && Boolean(dlgP['multiple']);
+        const suffixes: string[] = [];
+        const filters: Object | undefined = dlgP['filters'];
+        if (filters instanceof Array) {
+          for (const f of filters as Array<Object>) {
+            const fRec: Record<string, Object> = f as Record<string, Object>;
+            const exts: Object | undefined = fRec['extensions'];
+            if (exts instanceof Array) {
+              for (const e of exts as Array<Object>) {
+                const s: string = String(e).trim().toLowerCase();
+                if (s.length > 0 && s !== '*') {
+                  suffixes.push(s.startsWith('.') ? s.slice(1) : s);
+                }
+              }
+            }
+          }
+        }
+        try {
+          const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker(this.context!);
+          const uris: Array<string> = await docPicker.select({
+            maxNumber: multiple ? 50 : 1,
+            fileSuffixFilters: suffixes
+          } as picker.DocumentSelectOptions);
+          if (uris.length === 0) {
+            return null; // 用户取消（Tauri 语义）
+          }
+          const paths: string[] = [];
+          for (const uri of uris) {
+            paths.push(await this.importPickedUriToSandbox(uri));
+          }
+          hilog.info(0x0107, 'readestD9', 'dialog|open picked=%{public}d first=%{public}s',
+            paths.length, paths[0]);
+          return multiple ? paths : paths[0];
+        } catch (e) {
+          hilog.warn(0x0107, 'readestD9', 'dialog|open failed: %{public}s',
+            JSON.stringify(e).slice(0, 120));
+          return null;
+        }
       }
       case 'plugin:dialog|save': {
         const svName: string = String(args['defaultPath'] ?? 'export.bin');
