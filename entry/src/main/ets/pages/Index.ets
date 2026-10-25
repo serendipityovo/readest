@@ -1,5 +1,5 @@
 import { webview } from '@kit.ArkWeb';
-import { common, Want } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { nativeBridge } from '../services/NativeBridge';
@@ -7,9 +7,8 @@ import { RawFileServer } from '../services/RawFileServer';
 
 const VIRTUAL_HOST: string = 'http://readest.local/index.html';
 const BOOKS_HOST_PREFIX: string = 'http://readest.ohos.internal';
-// 上架审核：隐私政策地址（占位——提审前替换为 AGC 隐私托管生成的 URL
-// 或自建托管页，政策口径见 docs/PRIVACY-POLICY.md）
-const PRIVACY_URL: string = 'https://readest.com/privacy';
+// 隐私弹窗：采用 AGC「隐私声明托管」——系统标准化弹窗首启展示，自建弹窗
+// 须移除（官方文档：重复弹窗会被上架审核驳回）。政策口径 docs/PRIVACY-POLICY.md
 // 上架审核：webview 调试通道开关（发布构建打包脚本翻成 false）
 const DEBUG_WEB_CHANNEL: boolean = false;
 
@@ -21,7 +20,6 @@ struct Index {
   @State darkMode: boolean = false;
   @State frontendReady: boolean = false;
   @State extractLabel: string = '正在准备阅读器资源…';
-  @State privacyNeeded: boolean = false;
 
   aboutToAppear(): void {
     webview.WebviewController.initializeWebEngine();
@@ -36,17 +34,6 @@ struct Index {
         console.error(`[ReadestOhos] setWebDebuggingAccess failed: ${JSON.stringify(e)}`);
       }
     }
-    // 上架审核硬项②：首次启动隐私弹窗（国内市场标准要求；同意标记落盘）
-    // 注意：本机 API23 的 fs.accessSync 对缺失文件不抛错且返回真值（实测
-    // 2026-10-25），不能用作存在性判断；statSync 缺失必抛 13900002
-    try {
-      fs.statSync(`${context.filesDir}/privacy.accepted`);
-      this.privacyNeeded = false; // 标记存在：已同意过
-    } catch (e) {
-      this.privacyNeeded = true; // 无标记：首启弹窗
-    }
-    hilog.info(0x0107, 'readestD9', 'privacy check needed=%{public}s filesDir=%{public}s',
-      String(this.privacyNeeded), context.filesDir);
     // 单窗口移植默认值：全新安装时种子 openBookInNewWindow=false——桌面
     // 上游默认 true 会走"新窗口开书"路径（WebviewWindow 创建），本移植
     // 无多窗口能力，将静默无反应。已存在的 settings.json 不动（尊重用户
@@ -78,31 +65,6 @@ struct Index {
         this.extractLabel = '资源准备异常，仍尝试启动…';
         this.frontendReady = true; // still try: placeholder/404 will show
       });
-  }
-
-  private acceptPrivacy(): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    try {
-      const f: fs.File = fs.openSync(`${context.filesDir}/privacy.accepted`,
-        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-      fs.closeSync(f.fd);
-      hilog.info(0x0107, 'readestD9', 'privacy accepted marker written');
-    } catch (e) {
-      hilog.error(0x0107, 'readestD9', 'privacy marker write failed: %{public}s',
-        JSON.stringify(e).slice(0, 200));
-    }
-    this.privacyNeeded = false;
-  }
-
-  private declinePrivacy(): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    context.terminateSelf();
-  }
-
-  private openPrivacy(): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    const want: Want = { action: 'ohos.want.action.viewData', uri: PRIVACY_URL };
-    context.startAbility(want).catch((): void => { /* 无浏览器时忽略 */ });
   }
 
   build() {
@@ -184,55 +146,6 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor(this.darkMode ? '#000000' : '#ffffff')
-
-    // 上架审核②：首启隐私弹窗（半透明遮罩 + 政策入口 + 同意/退出）
-    if (this.privacyNeeded) {
-      Column() {
-        Column() {
-          Text('隐私政策提示')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .margin({ bottom: 12 })
-          Text('本应用为本地电子书阅读器：书籍内容全部来自您本地的文件导入，'
-          + '我们不上传您的书籍与阅读记录。应用将按需使用：本地文件读写（导入书籍）、'
-          + '剪贴板（复制引文）、网络（您主动配置的在线书城/语音合成）；'
-          + '匿名使用统计默认关闭，可随时在设置中开启或关闭。'
-          + '查看完整隐私政策请点击下方链接。')
-            .fontSize(14)
-            .fontColor('#555555')
-            .lineHeight(22)
-            .margin({ bottom: 16 })
-          Text('《隐私政策》')
-            .fontSize(14)
-            .fontColor('#007DFF')
-            .margin({ bottom: 20 })
-            .onClick(() => this.openPrivacy())
-          Button('同意并继续')
-            .width('100%')
-            .height(44)
-            .fontSize(16)
-            .backgroundColor('#007DFF')
-            .margin({ bottom: 10 })
-            .onClick(() => this.acceptPrivacy())
-          Button('不同意并退出')
-            .width('100%')
-            .height(44)
-            .fontSize(16)
-            .backgroundColor('#EEEEEE')
-            .fontColor('#666666')
-            .onClick(() => this.declinePrivacy())
-        }
-        .width('72%')
-        .padding(24)
-        .borderRadius(16)
-        .backgroundColor('#FFFFFF')
-        .alignItems(HorizontalAlign.Center)
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor('rgba(0,0,0,0.55)')
-      .justifyContent(FlexAlign.Center)
-    }
     }
     .width('100%')
     .height('100%')
