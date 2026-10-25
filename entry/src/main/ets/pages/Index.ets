@@ -6,7 +6,8 @@ import { RawFileServer } from '../services/RawFileServer';
 
 const VIRTUAL_HOST: string = 'http://readest.local/index.html';
 const BOOKS_HOST_PREFIX: string = 'http://readest.ohos.internal';
-// 上架审核：隐私政策地址（占位——提审前替换为真实可访问 URL）
+// 上架审核：隐私政策地址（占位——提审前替换为 AGC 隐私托管生成的 URL
+// 或自建托管页，政策口径见 docs/PRIVACY-POLICY.md）
 const PRIVACY_URL: string = 'https://readest.com/privacy';
 // 上架审核：webview 调试通道开关（发布构建打包脚本翻成 false）
 const DEBUG_WEB_CHANNEL: boolean = true;
@@ -168,7 +169,8 @@ struct Index {
             .margin({ bottom: 12 })
           Text('本应用为本地电子书阅读器：书籍内容全部来自您本地的文件导入，'
           + '我们不上传您的书籍与阅读记录。应用将按需使用：本地文件读写（导入书籍）、'
-          + '剪贴板（复制引文）、网络（您主动配置的在线书城/语音合成）。'
+          + '剪贴板（复制引文）、网络（您主动配置的在线书城/语音合成）；'
+          + '匿名使用统计默认关闭，可随时在设置中开启或关闭。'
           + '查看完整隐私政策请点击下方链接。')
             .fontSize(14)
             .fontColor('#555555')
