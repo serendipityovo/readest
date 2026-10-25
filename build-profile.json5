@@ -13,12 +13,27 @@
           "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
           "storePassword": "0000001B01C420311C39ACF6D710FFDF9DAED3ABF93297942A75460DAB3F604A4F07818615999300550256"
         }
+      },
+      {
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "D:/Projects/ReadestOhos/signing/release.p12",
+          "storePassword": "0000001C74341DBE82ABC64153FB16120526F58104E35E827E0DEC4E99FCEE4D77A606EAB0852EEC07468E20",
+          "keyAlias": "readest-release",
+          "keyPassword": "0000001CB8A27AA7B69C08D8CF9A982093CBC365EB791B58CC07C14540F329F52BE2EDFCDE86BBE96DD71EFD",
+          "signAlg": "SHA256withECDSA",
+          "profile": "D:/Projects/ReadestOhos/signing/release.p7b",
+          "certpath": "D:/Projects/ReadestOhos/signing/release.cer"
+        }
       }
     ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
+        // 真机回归用调试签名（release 证书签名包仅限市场渠道安装，hdc 直装被拒
+        // 9568322）；出上架 .app 时切回 "release"
+        "signingConfig": "release",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.0(23)",
         "runtimeOS": "HarmonyOS",
