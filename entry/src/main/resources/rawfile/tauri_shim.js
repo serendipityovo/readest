@@ -5,6 +5,23 @@
 (function () {
   'use strict';
 
+  // Brand rename (2026-10-27, review feedback 9.5): the frontend sets
+  // document.title dynamically ("Readest — ...") and ArkWeb mirrors it to the
+  // PC window title bar. Intercept every title write and swap the brand so the
+  // window bar never shows the upstream name.
+  try {
+    var titleDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
+    if (titleDesc && titleDesc.set) {
+      Object.defineProperty(document, 'title', {
+        configurable: true,
+        get: function () { return titleDesc.get.call(document); },
+        set: function (v) {
+          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613')); }
+          catch (e) { /* never block the page */ }
+        }
+      });
+    }
+  } catch (e) { /* older engines: fall back to natural behavior */ }
 
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }

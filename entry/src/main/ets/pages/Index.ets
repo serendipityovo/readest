@@ -159,7 +159,13 @@ struct Index {
     nativeBridge.setWindowTitleHandler((title: string): void => {
       window.getLastWindow(context)
         .then((win: window.Window): Promise<void> => win.setWindowTitle(title))
-        .catch((): void => { /* 标题设置失败不影响功能 */ });
+        .then((): void => {
+          hilog.info(0x0107, 'readestD9', 'setWindowTitle ok: %{public}s', title.slice(0, 40));
+        })
+        .catch((err: Error): void => {
+          hilog.error(0x0107, 'readestD9', 'setWindowTitle fail: %{public}s',
+            JSON.stringify(err).slice(0, 120));
+        });
     });
     try {
       // must run before the first load so window.__ohosBridge exists on the page

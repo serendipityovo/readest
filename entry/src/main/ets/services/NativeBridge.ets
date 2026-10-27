@@ -1049,9 +1049,12 @@ export class NativeBridge {
         // ArkUI 窗口标题由应用名固定；前端书名标题条自渲染，此处形状应答。
         // 改名（审核反馈：与上游 Readest 名称/图标相似）：拦截前端传入的
         // 标题串做品牌替换——窗口标题条不再出现 "Readest" 字样
-        const rawTitle: string = String(args['title'] ?? '');
+        // Tauri v2 window.setTitle 传参键是 value（@tauri-apps/api window.js:822），
+        // 不是 title——首版按 title 读恒空（hilog 实证 set_title raw=）
+        const rawTitle: string = String(args['value'] ?? args['title'] ?? '');
+        hilog.info(0x0107, 'readestD9', 'set_title raw=%{public}s', rawTitle.slice(0, 40));
         if (rawTitle.length > 0) {
-          const reTitle: string = rawTitle.replace(/readest/gi, '展卷');
+          const reTitle: string = rawTitle.replace(/readest/gi, '阅易');
           try {
             this.windowTitleHandler?.(reTitle);
           } catch (e) {
@@ -1113,7 +1116,7 @@ export class NativeBridge {
       case 'localsend_start': {
         const status: LocalSendStatus = {
           running: true,
-          alias: '展卷',
+          alias: '阅易',
           port: 53317,
           fingerprint: 'ohos:degraded',
           deviceModel: 'HarmonyOS',
@@ -1125,7 +1128,7 @@ export class NativeBridge {
       case 'localsend_get_status': {
         const st: LocalSendStatus = {
           running: true,
-          alias: '展卷',
+          alias: '阅易',
           port: 53317,
           fingerprint: 'ohos:degraded',
           deviceModel: 'HarmonyOS',
