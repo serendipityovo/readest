@@ -1,5 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { nativeBridge } from '../services/NativeBridge';
@@ -154,6 +155,12 @@ struct Index {
   private setupBridge(): void {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     nativeBridge.setController(this.controller, context);
+    // 前端 set_window_title → PC 窗口标题栏（品牌名已由桥内替换为"展卷"）
+    nativeBridge.setWindowTitleHandler((title: string): void => {
+      window.getLastWindow(context)
+        .then((win: window.Window): Promise<void> => win.setWindowTitle(title))
+        .catch((): void => { /* 标题设置失败不影响功能 */ });
+    });
     try {
       // must run before the first load so window.__ohosBridge exists on the page
       this.controller.registerJavaScriptProxy(bridgeProxy, '__ohosBridge', ['invoke', 'notify']);

@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "Readest ebook reader entry module"
+      "value": "展卷电子书阅读器入口模块"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Readest ebook reader main ability"
+      "value": "展卷电子书阅读器主能力"
     },
     {
       "name": "EntryAbility_label",
-      "value": "Readest"
+      "value": "展卷"
     }
   ]
 }

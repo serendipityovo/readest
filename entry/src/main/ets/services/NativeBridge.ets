@@ -122,6 +122,13 @@ interface StatusResult { status: string }
 export class NativeBridge {
   private controller: webview.WebviewController | null = null;
   private context: common.UIAbilityContext | null = null;
+  // 窗口标题回调：Index 注入（window.getLastWindow().setWindowTitle）。
+  // set_window_title 命令经此把改名后的标题写到 PC 窗口标题栏
+  private windowTitleHandler: ((title: string) => void) | null = null;
+
+  setWindowTitleHandler(handler: (title: string) => void): void {
+    this.windowTitleHandler = handler;
+  }
   private mainWindow: window.Window | null = null;
   private cachedBrightness: number = 0.5;
   private channels: Map<string, number[]> = new Map(); // 'plugin|event' -> Channel callback ids (broadcast)
@@ -1030,7 +1037,6 @@ export class NativeBridge {
       case 'reveal_item_in_dir': {
         return null; // OHOS 无"在文件夹中显示"系统 API；前端容错隐藏入口
       }
-      case 'set_window_title':
       case 'plugin:window|get_all_windows': {
         // Tauri 语义：WindowEntry[]。本移植单窗口——恒报 main（与 shim
         // metadata.currentWindow.label 一致）。useOpenWithBooks 等对返回值
@@ -1038,8 +1044,20 @@ export class NativeBridge {
         const wins: WindowEntry[] = [{ label: 'main' }];
         return wins;
       }
+      case 'set_window_title':
       case 'plugin:window|set_title': {
-        // ArkUI 窗口标题由应用名固定；前端书名标题条自渲染，此处形状应答
+        // ArkUI 窗口标题由应用名固定；前端书名标题条自渲染，此处形状应答。
+        // 改名（审核反馈：与上游 Readest 名称/图标相似）：拦截前端传入的
+        // 标题串做品牌替换——窗口标题条不再出现 "Readest" 字样
+        const rawTitle: string = String(args['title'] ?? '');
+        if (rawTitle.length > 0) {
+          const reTitle: string = rawTitle.replace(/readest/gi, '展卷');
+          try {
+            this.windowTitleHandler?.(reTitle);
+          } catch (e) {
+            // 标题设置失败不影响功能
+          }
+        }
         return null;
       }
 
@@ -1089,10 +1107,13 @@ export class NativeBridge {
       // ---- localsend: degraded to a running-but-idle service so the manager's
       // status polling settles (a null answer restart-stormed ×107 in D4 lab).
       // Full LAN transfer (mDNS + HTTP server) is a documented degradation.
+      // 2026-10-26 审核反馈#2（附近设备"显示错误"）：未实现的子命令此前落到
+      // 默认分支返回 null，前端对 null .map 直接抛错渲染错误页——补齐全部
+      // 命令的安全形状（空设备表/未运行/拒收），让 UI 呈现"无设备"空态而非崩溃
       case 'localsend_start': {
         const status: LocalSendStatus = {
           running: true,
-          alias: 'Readest',
+          alias: '展卷',
           port: 53317,
           fingerprint: 'ohos:degraded',
           deviceModel: 'HarmonyOS',
@@ -1101,12 +1122,37 @@ export class NativeBridge {
         };
         return status;
       }
+      case 'localsend_get_status': {
+        const st: LocalSendStatus = {
+          running: true,
+          alias: '展卷',
+          port: 53317,
+          fingerprint: 'ohos:degraded',
+          deviceModel: 'HarmonyOS',
+          localIps: [],
+          multicastError: null
+        };
+        return st;
+      }
+      case 'localsend_list_devices': {
+        const empty: Object[] = [];
+        return empty;
+      }
       case 'localsend_is_alive': {
         return true;
       }
+      case 'localsend_announce':
       case 'localsend_stop':
+      case 'localsend_cancel_receive':
+      case 'localsend_cancel_send':
       case 'localsend_set_discoverable': {
         return null;
+      }
+      case 'localsend_respond': {
+        return false; // 未实现接收协商：显式拒收（前端据此终止会话而非报错）
+      }
+      case 'localsend_send_files': {
+        return false; // 未实现发送：前端走失败提示分支
       }
 
       // ---- clipboard (pasteboard; the JS side falls back to navigator.clipboard
