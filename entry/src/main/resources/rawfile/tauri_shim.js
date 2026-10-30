@@ -26,6 +26,15 @@
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }
 
+  // Upstream "self-hosted distribution" posture: this build ships without the
+  // vendor's cloud/payment backend, so unlock the features the paywall gates
+  // (isSelfHosted() in src/utils/access.ts reads this window key) — otherwise
+  // the Premium upsell points at a backend this fork does not run.
+  try {
+    window.__READEST_RUNTIME_CONFIG =
+      Object.assign({}, window.__READEST_RUNTIME_CONFIG, { selfHosted: true });
+  } catch (e) { /* never block the page */ }
+
   // （审计移除）D12 的 iframe getter 转发块——真机 KI-5 实际由全 shell
   // 加固+缓存绕过（同批部署）治愈；本块反而破坏 Chromium 系 lab 渲染
   // （reader 探针挂起于"加载中"，A/B 定位 2026-10-24），且对 ArkWeb 属

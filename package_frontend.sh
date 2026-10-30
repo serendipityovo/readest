@@ -79,7 +79,24 @@ for p in glob.glob(r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/fr
 print("all route shells hardened")
 EOF
 
-echo "[6/6] writing buildstamp (drives incremental extraction on device)..."
+echo "[6/7] brand patch (阅易 rebrand, review 9.5)..."
+# titles: <title> → 阅易（动态设置由 shim document.title 劫持兜底）
+sed -i 's#<title>[^<]*</title>#<title>阅易</title>#' "$RAW_DIR"/*.html
+# locale 值侧大写 Readest → 阅易（键不动=查找语义；小写 readest 不动=URL/邮箱）
+# 多轮防同值双次出现被贪婪吞掉
+for pass in 1 2 3; do
+  for f in "$RAW_DIR"/locales/*/translation.json; do
+    if [ "$f" = "$RAW_DIR/locales/zh-TW/translation.json" ]; then
+      sed -i 's/: "\([^"]*\)Readest\([^"]*\)"/: "\1閱易\2"/g' "$f"
+    else
+      sed -i 's/: "\([^"]*\)Readest\([^"]*\)"/: "\1阅易\2"/g' "$f"
+    fi
+  done
+done
+# chunk 内页脚链接文字等独立品牌串（仅精确 children 字面量，不碰 URL/标识符）
+sed -i 's/children:"Readest"/children:"阅易"/g' "$RAW_DIR"/_next/static/chunks/*.js
+
+echo "[7/7] writing buildstamp (drives incremental extraction on device)..."
 date +%s > "$RAW_DIR/buildstamp.txt"
 
 du -s --block-size=1M "$RAW_DIR" | cut -f1 | xargs -I{} echo "frontend packaged: {} MB"
