@@ -137,6 +137,9 @@ export class NativeBridge {
   // D9 文件关联：冷启动 want 到达时前端尚未 register_listener，暂存负载，
   // 待 shared-intent 注册到达的瞬间补投（热启动则直接投递）
   private pendingIntent: SharedIntentPayload | null = null;
+  // V-16：want 沙箱拷贝在飞任务（get_current 等待其完成防冷启动竞态）
+  private wantSettle: Promise<void> | null = null;
+  private wantSettleDone: boolean = true;
   private lastIntentKey: string = '';
   private lastIntentAt: number = 0;
   // KI-5 诊断：reqId -> cmd（resolve 打点用）
@@ -252,17 +255,66 @@ export class NativeBridge {
     }
     this.lastIntentKey = key;
     this.lastIntentAt = now;
-    if (this.deepLinkLaunchUrls.length === 0) {
-      this.deepLinkLaunchUrls = [uri];
+    // V-16/V-17（真机实测 R7/R8）：want 送达的 file:// 路径在沙箱外，
+    // 前端 ingestFile→fs|open 被 assertSandboxPath 拒绝（冷启动"导入失败"）；
+    // 热启动则因前端不注册 shared-intent 监听而完全无反应。修复：
+    // ① 借 want 临时授权把文件拷入 filesDir/imports/，后续全链走沙箱路径
+    // ② 拷贝期间 get_current 等待（防冷启动轮询窗口错过）
+    // ③ 无监听时经 window.OPEN_WITH_FILES 主动推送（上游库页自备入口）
+    this.wantSettle = this.settleWantUri(uri)
+      .then((finalUri: string): void => {
+        this.deepLinkLaunchUrls = [finalUri];
+        const payload: SharedIntentPayload = { urls: [finalUri], action: action };
+        const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
+        if (listeners !== undefined && listeners.length > 0) {
+          hilog.info(0x0107, 'readestD9', 'shared-intent emit direct (%{public}d listeners)',
+            listeners.length);
+          this.emitChannel('native-bridge', 'shared-intent', payload);
+        } else {
+          hilog.info(0x0107, 'readestD9', 'shared-intent push via OPEN_WITH_FILES');
+          this.pendingIntent = payload;
+          this.pushOpenWithFiles([finalUri]);
+        }
+      })
+      .catch((e: Error): void => {
+        // 拷贝失败退回旧行为（原始 uri 直投——大概率被沙箱拒绝并优雅报错）
+        hilog.warn(0x0107, 'readestD9', 'want sandbox copy failed: %{public}s',
+          JSON.stringify(e).slice(0, 120));
+        this.deepLinkLaunchUrls = [uri];
+        const payload: SharedIntentPayload = { urls: [uri], action: action };
+        const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
+        if (listeners !== undefined && listeners.length > 0) {
+          this.emitChannel('native-bridge', 'shared-intent', payload);
+        } else {
+          this.pendingIntent = payload;
+        }
+      });
+    this.wantSettleDone = false;
+  }
+
+  /** V-16：want file:// → 沙箱副本路径（两种 URI 形态都试） */
+  private async settleWantUri(uri: string): Promise<string> {
+    try {
+      return await this.importPickedUriToSandbox(uri);
+    } catch (e) {
+      const stripped: string = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
+      return await this.importPickedUriToSandbox(stripped);
     }
-    const payload: SharedIntentPayload = { urls: [uri], action: action };
-    const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
-    if (listeners !== undefined && listeners.length > 0) {
-      hilog.info(0x0107, 'readestD9', 'shared-intent emit direct (%{public}d listeners)', listeners.length);
-      this.emitChannel('native-bridge', 'shared-intent', payload);
-    } else {
-      hilog.info(0x0107, 'readestD9', 'shared-intent pending (no listener yet)');
-      this.pendingIntent = payload;
+  }
+
+  /** V-17：无 shared-intent 监听时借库页自备的 window.OPEN_WITH_FILES 入口推送 */
+  private pushOpenWithFiles(paths: string[]): void {
+    if (!this.controller) {
+      return;
+    }
+    const js: string = `try{if(typeof window.OPEN_WITH_FILES==='function'){` +
+      `window.OPEN_WITH_FILES(${JSON.stringify(paths)});` +
+      `window.__WANT_PUSHED=Date.now();}}catch(e){}`;
+    try {
+      this.controller.runJavaScript(js);
+    } catch (e) {
+      hilog.warn(0x0107, 'readestD9', 'OPEN_WITH_FILES push failed: %{public}s',
+        JSON.stringify(e).slice(0, 80));
     }
   }
 
@@ -460,6 +512,15 @@ export class NativeBridge {
     switch (bareCmd) {
       // ---- plugin:deep-link（冷启动 URL 查询；census 实测开书会话 ×3）----
       case 'plugin:deep-link|get_current': {
+        // V-16：want 沙箱拷贝进行中则等待（冷启动轮询窗口 vs 大文件拷贝竞态）
+        if (this.wantSettle !== null && !this.wantSettleDone) {
+          try {
+            await this.wantSettle;
+          } catch (e) {
+            // settle 失败也已回填原始 uri
+          }
+          this.wantSettleDone = true;
+        }
         return this.deepLinkLaunchUrls;
       }
 

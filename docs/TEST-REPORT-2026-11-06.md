@@ -260,3 +260,18 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 ---
 
 *报告生成：2026-11-06 · 执行者：ZCode 自动化测试（Web 回归 + 白盒 harness + 品牌扫描 + 配置审查 + 真机 SelfTest/文件关联/编译门/签名链）*
+
+---
+
+## 9. §8 真机缺陷修复记录（2026-11-06 深夜批次）
+
+| 项 | 修复 | 状态 |
+|---|---|---|
+| **V-16** | `handleWant` 重构：file:// want 先借临时授权拷入 `filesDir/imports/`（`settleWantUri` 双 URI 形态回退），后续 get_current/shared-intent/OPEN_WITH_FILES 全链走沙箱路径；拷贝失败回退旧行为（原始 uri + 优雅报错） | 代码落地，编译门 BUILD SUCCESSFUL；**真机验证待证书续期** |
+| **V-17** | 无监听时新增第三通道：`pushOpenWithFiles` 经 `runJavaScript` 调用前端库页自备的 `window.OPEN_WITH_FILES([path])` 入口（上游 `processOpenWithFiles` 全量 ingest 语义）；pendingIntent 兜底保留 | 同上 |
+| 冷启动竞态 | `get_current` 等待在飞 `wantSettle`（大文件拷贝 vs 前端启动轮询窗口） | 代码内注释 |
+| **V-18** | 备案：`--ps selftest 1` 仅冷启生效，onNewWant 注释注明复测须 force-stop 冷启 | 文档化 |
+| R2 | SelfTest download 用例 URL `favicon.ico`→`favicon.png`（tuna .ico 已全网 404，.png 200）+ 落盘扩展名对齐 | 待真机复跑 64/64 |
+| **D-8** | 修复方向=对齐上游（上游桌面双击开书可用）：V-16/17 修复后冷/热启动"打开方式"均应可用；验证后从差异表移除 | 待真机 |
+
+验证：`BUILD SUCCESSFUL in 38s`（grep 显式门）。运行时复验依赖调试证书续期（§8.4 步骤，需 DevEco GUI 重签）。

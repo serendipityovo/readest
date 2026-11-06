@@ -38,7 +38,10 @@ export default class EntryAbility extends UIAbility {
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    // 单实例热启动：应用已运行时再次被文件打开拉起（前端监听已注册，直接广播）
+    // 单实例热启动：应用已运行时再次被文件打开拉起（want 沙箱化+双通道投递见
+    // NativeBridge.handleWant V-16/V-17 修复）
+    // V-18 备案：--ps selftest 1 仅 onWindowStageCreate 生效（冷启直达自测
+    // 页）；热启动走本分支参数被忽略——复测请先 force-stop 再冷启拉起
     hilog.error(DOMAIN, 'readestWant', 'onNewWant want=%{public}s', JSON.stringify(want).slice(0, 400));
     try {
       nativeBridge.handleWant(want);
