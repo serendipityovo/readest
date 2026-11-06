@@ -1788,9 +1788,9 @@ export class NativeBridge {
     const cache: string = this.context.cacheDir;
     // 前缀必须含尾部分隔符（V-05）：无分隔符的 startsWith 会放过
     // …/files_evil/x、…/cacheX/y 一类同前缀兄弟目录（白盒 harness T2 实证）
-    const under: boolean = (root: string, q: string): boolean =>
-      q === root || (root.length > 0 && q.startsWith(`${root}/`));
-    const ok: boolean = under(files, p) || under(cache, p);
+    const underFiles: boolean = p === files || (files.length > 0 && p.startsWith(`${files}/`));
+    const underCache: boolean = p === cache || (cache.length > 0 && p.startsWith(`${cache}/`));
+    const ok: boolean = underFiles || underCache;
     if (!ok) {
       throw new Error(`path outside app sandbox: ${p.slice(0, 60)}`);
     }
