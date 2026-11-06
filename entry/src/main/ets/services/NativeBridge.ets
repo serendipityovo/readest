@@ -1,4 +1,5 @@
 import { window } from '@kit.ArkUI';
+import { font } from '@kit.ArkUI';
 import { common, Want } from '@kit.AbilityKit';
 import { asset } from '@kit.AssetStoreKit';
 import { webview } from '@kit.ArkWeb';
@@ -542,13 +543,27 @@ export class NativeBridge {
       }
       case 'get_sys_fonts_list': {
         // contract: {fonts: Record<fontName, fontFamily>} (bridge.ts)
-        const fonts: Record<string, string> = {
-          'HarmonyOS Sans': 'HarmonyOS Sans',
-          'HarmonyOS Sans SC': 'HarmonyOS Sans SC',
-          'HarmonyOS Sans TC': 'HarmonyOS Sans TC',
-          'HarmonyOS Serif': 'HarmonyOS Serif',
-          'MiSans': 'MiSans'
-        };
+        // D-3（审核测试报告）：上游枚举全部系统字体——改为真枚举
+        //（@ohos.font.getSystemFontList），失败回退固定鸿蒙字体集
+        const fonts: Record<string, string> = {};
+        try {
+          const names: Array<string> = font.getSystemFontList();
+          for (const n of names) {
+            if (n.length > 0) {
+              fonts[n] = n;
+            }
+          }
+        } catch (e) {
+          hilog.warn(0x0107, 'readestD9', 'getSystemFontList failed: %{public}s',
+            JSON.stringify(e).slice(0, 80));
+        }
+        if (Object.keys(fonts).length === 0) {
+          fonts['HarmonyOS Sans'] = 'HarmonyOS Sans';
+          fonts['HarmonyOS Sans SC'] = 'HarmonyOS Sans SC';
+          fonts['HarmonyOS Sans TC'] = 'HarmonyOS Sans TC';
+          fonts['HarmonyOS Serif'] = 'HarmonyOS Serif';
+          fonts['MiSans'] = 'MiSans';
+        }
         const result: FontsListResult = { fonts: fonts };
         return result;
       }

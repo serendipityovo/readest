@@ -185,10 +185,6 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 
 ---
 
-*报告生成：2026-11-06 · 执行者：ZCode 自动化测试（黑盒回归 + 白盒 harness + 全库品牌扫描 + 配置审查）*
-
----
-
 ## 7. 修复记录（2026-11-06 当日闭环）
 
 | 项 | 修复 | 验证 |
@@ -209,3 +205,58 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 | 备案维持 | V-10/V-11/V-12/V-15（原样备案） | — |
 
 验证：ArkTS 编译门 PASS；lab 七探针 **7/7**（首轮 reader FAIL 为换包瞬态，复跑连续全绿）。修复器已固化 `package_frontend.sh [6b/6c]`，重打包幂等。
+
+---
+
+## 8. 真机补测（2026-11-06 晚间 · 独立于 §7 修复批次）
+
+> 设备：**HUAWEI MateBook Pro（API 23，系统语言 zh-Hans）**；hdc 来自 `E:\DevEco Studio\sdk`。
+> 说明：R1–R8 在**设备原装 debug 构建（10-30 基线，即 §7 修复前代码）**上执行；§7 修复后的包级复验见 R10。
+
+### 8.1 执行与结果（修复前构建）
+
+| # | 测试 | 结果 |
+|---|---|---|
+| R1 | **SelfTest 64 用例**（`--ps selftest 1` 冷启直达 + `uitest uiInput click` 自动点击「全部运行」+ hilog 逐例采集） | **60 OK / 3 SKIP / 1 THROW**，与文档基线完全一致 |
+| R2 | THROW 定性：#63 `download_file` → `http error code 404` | 本机 curl 验证 tuna `favicon.ico` 已全网 404（`.png` 200）→ **测试数据失效，非应用缺陷**；http 错误路径正确上抛 |
+| R3 | 主应用冷启动 | KI5 探针全 true、`[SHIM-LOAD] main + ?v=buildstamp`、**零 unhandledrejection / 零 error** |
+| R4 | 窗口标题品牌链 | hilog 实证 `set_title raw=Readest` → 桥内替换 → `setWindowTitle ok: 阅易`；截图确认标题栏「阅易」、全界面无 Readest 字样 |
+| R5 | V-02 随包发布（修复前） | 旧包 `resources.index` 含 zh_CN "Readest"×3，设备语言 zh-Hans 命中 |
+| R6 | V-12 真机可见（修复前） | SelfTest 页标题截图可见「Readest 鸿蒙 · 桥接自测页」 |
+| R7 | 文件关联·**冷启动** want | 链路完整触发：handleWant → `deep-link|get_current` 返回 uri ×4 → 前端 ingestFile → `plugin:fs\|open` → **resolve ok=false `"path outside app sandbox"`** → 前端 "Error importing book"（优雅报错不崩溃）→ 书架仍空 |
+| R8 | 文件关联·**热启动** want | `shared-intent pending (no listener yet)`：本 build 前端从未注册 shared-intent 监听（invoke 全量 census 无该 register_listener），pendingIntent 无消费者、get_current 不再轮询 → 观察 50s **无反应无提示** |
+| R9 | SelfTest 关键通过项抽查 | `colorScheme=dark`（跟随系统深色）、`turso|select → [{"id":1,"v":"hi"}]`、`native-tts|speak → utteranceId`、`fs|read_text_file → [111,107]`、Asset Kit 密钥存取 ✓ |
+
+### 8.2 新增缺陷（并入 §3.1；均未被 §7 修复覆盖，**仍开放**）
+
+| 编号 | 级别 | 描述与真机证据 | 建议 |
+|---|---|---|---|
+| **V-16** | **P2** | **文件关联导入对沙箱外路径必然失败**：module.json5 声明 7 种 UTD"打开方式"技能，但真实场景送达的 file:// URI 均在 filesDir 外，ingestFile→`fs\|open` 被 `assertSandboxPath` 拒绝（R7 实证）。`importPickedUriToSandbox` 仅接 picker 路径。KI-5"file:// SEND 导入未落盘"残余项实测未闭环；FIDELITY-AUDIT"深链/文件关联=完全一致"与实测不符 | want 路径复用 importPickedUriToSandbox（借临时授权拷入 `filesDir/imports/`）再进 NativeFile |
+| **V-17** | **P2** | **热启动文件关联完全无反应**（R8）：shared-intent 监听从未注册、pendingIntent 无消费者、get_current 仅启动期轮询——应用已开时"打开方式"既不导入也不提示 | 前端挂载 useAppUrlIngress 注册监听，或桥在 onNewWant 后主动通知 |
+| **V-18** | P3 | `--ps selftest 1` 仅 onWindowStageCreate 生效：应用已运行时走 onNewWant，参数被忽略（R1 首次尝试实证，需 force-stop 后冷启） | onNewWant 处理参数或文档注明 |
+
+与上游差异表增补：**D-8 文件关联导入（"打开方式"）不可用**（冷启动报"导入失败"、热启动无响应）——上游桌面版双击开书可用。
+
+### 8.3 编译门（E3）与签名链（E 环境新发现）
+
+- **ArkTS 编译 + 打包：PASS**（hvigor `assembleHap` 两轮，`BUILD SUCCESSFUL in 41s`；产物 `entry-default-unsigned.hap` 43.4MB）。
+- **SignHap：失败——`The certificate has expired! NotAfter: 2026-11-05`**。`~/.ohos/config` 自动签名材料生成于 10-22（约 14 天有效期），**已于 11-05 过期**。此为环境项非代码项。
+- 该过期同时解释了本晚所有 `hdc install` 失败（9568322 not trusted app source）：仓库发布证书 hap 本就仅限应用市场渠道；debug 证书又过期 → **当前无任何可直装签名**。
+- **§7 修复批次包级复验（R10）**：以修复后源码构建的 unsigned 包内检——`resources.index` **0×"Readest" / 7×"阅易"**、`manifest.json name=阅易`、`.well-known` 已移除、`select_directory` 已传 context（源码 1534 行）→ **V-02/V-08/A5/A6/C 类修复确认进包**；运行时复验待证书续期（见 8.4）。
+
+### 8.4 ⚠️ 设备状态披露与恢复步骤
+
+测试过程中为验证新构建安装执行了 `bm uninstall com.readest.app`，随后因 debug 证书过期**无法重装**，设备当前**未安装本应用**。恢复步骤（需人工，约 5 分钟）：
+
+1. 打开 DevEco Studio → File→Project Structure→Signing Configs→勾选 Automatically generate signature，重新登录华为账号生成新 debug 证书/profile（覆盖 `~/.ohos/config`）；
+2. `bash scripts/deploy.sh --build`（构建+签名+安装+启动一条龙），预期 `AppMod finish`。
+
+### 8.5 真机小结
+
+- **通过面**：桥命令真实分发 60/64、冷启动零异常、缓存绕过生效、品牌替换链真机生效（主界面零上游品牌泄露）、调试通道关闭、发布证书直装拒绝符合安全预期。
+- **缺陷面**：文件关联（V-16/V-17）为真机实测的**功能级缺陷**且未在 §7 修复；V-18 调试入口边界。
+- **环境**：debug 证书过期（11-05）导致签名/装机链路阻断，属测试环境维护项，已给出恢复步骤。
+
+---
+
+*报告生成：2026-11-06 · 执行者：ZCode 自动化测试（Web 回归 + 白盒 harness + 品牌扫描 + 配置审查 + 真机 SelfTest/文件关联/编译门/签名链）*
