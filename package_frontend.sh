@@ -99,10 +99,19 @@ sed -i 's/children:"Readest"/children:"阅易"/g' "$RAW_DIR"/_next/static/chunks
 # 付费墙整体移除（fork 无上游支付后端）：设置菜单 Premium 入口条件永假 +
 # /user 页套餐对比组件替换为 null 渲染（模式经唯一性验证，chunk 名可变，
 # 用内容匹配重打；两 sed 目标各恰好 1 处，命中失败即报错中断）
+# ⚠ 必须在 brand_rename.py 之前跑（模式引用原始英文键字面量）
 HIT1=$(grep -l 'c&&"free"===d&&(0,n.jsx)(af.default,{label:s("Upgrade to Readest Premium")' "$RAW_DIR"/_next/static/chunks/*.js | head -1)
 [ -n "$HIT1" ] && sed -i 's/c&&"free"===d&&/c\&\&"never"===d\&\&/' "$HIT1" || echo "WARN: premium menu pattern not found"
 HIT2=$(grep -l '(0,a.jsx)(eD,{availablePlans:ea,' "$RAW_DIR"/_next/static/chunks/*.js | head -1)
 [ -n "$HIT2" ] && sed -i 's/(0,a.jsx)(eD,{availablePlans:ea,/(0,a.jsx)(()=>null,{availablePlans:ea,/' "$HIT2" || echo "WARN: plans pattern not found"
+
+echo "[6b/7] string-literal brand rename (阅易, node --check gated)..."
+python scripts/brand_rename.py
+
+echo "[6c/7] dead resources (upstream mobile-assoc / disabled updater)..."
+rm -rf "$RAW_DIR/.well-known"
+rm -rf "$RAW_DIR/updater"
+rm -f "$RAW_DIR/updater.html" "$RAW_DIR/updater.txt"
 
 echo "[7/7] writing buildstamp (drives incremental extraction on device)..."
 date +%s > "$RAW_DIR/buildstamp.txt"

@@ -631,10 +631,14 @@ export class NativeBridge {
         }
         let src: string = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
         let err: string | null = null;
+        // V-04：dst 此前仅 normalizePath 未走沙箱钳制（README 声称全出口
+        // 钳制，此命令漏网）——可写向沙箱内任意路径。补钳制（picker 拷贝
+        // 目标本就应在沙箱业务目录内）
         if (src.startsWith('/') && !src.includes('..') && dst.length > 0) {
           try {
-            this.fsEnsureDir(this.parentDir(this.normalizePath(dst)));
-            fs.copyFileSync(src, this.normalizePath(dst));
+            const safeDst: string = this.assertSandboxPath(this.normalizePath(dst));
+            this.fsEnsureDir(this.parentDir(safeDst));
+            fs.copyFileSync(src, safeDst);
           } catch (e) {
             err = `copy failed: ${src} -> ${dst}`;
           }
@@ -1382,21 +1386,43 @@ export class NativeBridge {
           dlOpts.extraData = String(bodyArg);
         }
         const dlReq: http.HttpRequest = http.createHttp();
-        // KI-7 看门狗：系统 http 栈对不可达 TLS 站点可能永不回调
-        // （readTimeout 不触发），20s 强制失败避免用例永挂
-        const dlWatchdog: Promise<http.HttpResponse> = new Promise(
-          (_resolve, reject) => {
-            setTimeout((): void => {
-              reject(new Error('download watchdog timeout (20s)'));
-            }, 20000);
+        // KI-7 看门狗（V-14 改进）：系统 http 栈对不可达 TLS 站点可能永不
+        // 回调（readTimeout 不触发）——超时强制失败避免永挂。原先固定 20s
+        // 会误杀慢网大书；改为"有进度即续期"：headers/data 事件每次重置
+        // 20s 计时，不可达站点（零事件）仍在 20s 内失败
+        let dlWd: number = -1;
+        let wdReject: (e: Error) => void = (): void => {};
+        const armWatchdog = (): void => {
+          if (dlWd >= 0) {
+            clearTimeout(dlWd);
           }
-        );
+          dlWd = setTimeout((): void => {
+            wdReject(new Error('download watchdog timeout (20s no progress)'));
+          }, 20000);
+        };
+        const dlWatchdog: Promise<never> = new Promise<never>(
+          (_resolve, reject): void => {
+            wdReject = reject;
+            armWatchdog();
+          });
+        try {
+          dlReq.on('headersReceive', (): void => armWatchdog());
+          dlReq.on('dataReceive', (): void => armWatchdog());
+        } catch (e) {
+          // 事件注册失败退化为固定 20s 看门狗（已在计时）
+        }
         const dlRsp: http.HttpResponse = await Promise
           .race([dlReq.request(dlUrl, dlOpts), dlWatchdog])
           .catch((e: BusinessError): http.HttpResponse => {
+            if (dlWd >= 0) {
+              clearTimeout(dlWd);
+            }
             dlReq.destroy();
             throw new Error(`download failed: ${e.message}`);
           });
+        if (dlWd >= 0) {
+          clearTimeout(dlWd);
+        }
         dlReq.destroy();
         if (dlRsp.responseCode >= 400) {
           throw new Error(`http error code ${dlRsp.responseCode}`);
@@ -1521,7 +1547,10 @@ export class NativeBridge {
       }
       case 'select_directory': {
         try {
-          const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
+          // V-06：无参构造（全局上下文）从 web 调用栈 select() 永挂——
+          // show_file_picker 同款问题（交付审计已修），此处补齐：显式传
+          // UIAbility context 使回调路由回本能力窗口
+          const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker(this.context!);
           const uris: Array<string> = await docPicker.select({
             maxNumber: 1,
             selectMode: picker.DocumentSelectMode.FOLDER
@@ -1757,7 +1786,11 @@ export class NativeBridge {
     }
     const files: string = this.context.filesDir;
     const cache: string = this.context.cacheDir;
-    const ok: boolean = p.startsWith(files) || p.startsWith(cache);
+    // 前缀必须含尾部分隔符（V-05）：无分隔符的 startsWith 会放过
+    // …/files_evil/x、…/cacheX/y 一类同前缀兄弟目录（白盒 harness T2 实证）
+    const under: boolean = (root: string, q: string): boolean =>
+      q === root || (root.length > 0 && q.startsWith(`${root}/`));
+    const ok: boolean = under(files, p) || under(cache, p);
     if (!ok) {
       throw new Error(`path outside app sandbox: ${p.slice(0, 60)}`);
     }

@@ -18,6 +18,9 @@ const FRONTEND_HOST: string = 'readest.local';
 const BOOKS_HOST: string = 'readest.ohos.internal';
 const RANGE_HOST: string = 'rangefile.localhost';
 const STAMP_NAME: string = 'buildstamp.txt';
+// V-01：页面唯一源（ArkWeb 加载 origin）。CORS 从通配 * 收窄到具体源——
+// 沙箱化书内 iframe（origin null）无法再跨源读响应体
+const APP_ORIGIN: string = `http://${FRONTEND_HOST}`;
 
 export class RawFileServer {
   private rootDir: string = '';
@@ -33,6 +36,23 @@ export class RawFileServer {
     // whole filesDir keeps book/covers/config paths uniform
     this.filesRoot = context.filesDir;
     this.cacheRoot = context.cacheDir;
+  }
+
+  /** V-05：前缀比较必须含尾部分隔符，防 files_evil/cacheX 同前缀兄弟目录 */
+  private isUnder(root: string, p: string): boolean {
+    return root.length > 0 && (p === root || p.startsWith(`${root}/`));
+  }
+
+  /**
+   * V-01：书籍主机的文件白名单。此前放开整个 filesDir/cacheDir——沙箱化
+   * 书内 iframe（恶意 epub 内嵌 JS）可跨源拉取 settings.json、DB 等全部
+   * 沙箱文件。收窄到前端业务目录 filesDir/Readest/**（Books/Fonts/Images/
+   * Dictionaries/Data/Settings 全在其下）与 cacheDir（缩略图等低敏缓存）；
+   * filesDir 根部的 settings.json、*.db 从此不可经 HTTP 触达
+   */
+  private booksPathAllowed(absPath: string): boolean {
+    return this.isUnder(`${this.filesRoot}/Readest`, absPath)
+      || this.isUnder(this.cacheRoot, absPath);
   }
 
   async extractIfNeeded(onProgress: (done: number, total: number) => void): Promise<void> {
@@ -76,13 +96,9 @@ export class RawFileServer {
       if (path !== '' && !path.startsWith('/')) {
         path = `/${path}`;
       }
-      // 安全审计加固（2026-10-25）：asset 通道此前接受任意绝对路径——同源
-      // iframe（如恶意书籍内容）可借此拉取 settings.json 等沙箱敏感文件。
-      // 上游 Tauri asset 协议带 scope 白名单；此处等价收窄到 filesDir/缓存根
-      const assetAllowed: boolean =
-        (this.filesRoot.length > 0 && path.startsWith(this.filesRoot))
-        || (this.cacheRoot.length > 0 && path.startsWith(this.cacheRoot));
-      if (!assetAllowed) {
+      // V-01 收窄：filesDir/cacheDir 全放开 → 业务目录白名单（见
+      // booksPathAllowed）。上游 Tauri asset 协议即按 scope 子目录授权
+      if (!this.booksPathAllowed(path)) {
         response.setResponseCode(403);
         response.setReasonMessage('Forbidden');
         response.setResponseData('forbidden');
@@ -104,7 +120,7 @@ export class RawFileServer {
 
     response.setResponseHeader([
       { headerKey: 'Content-Type', headerValue: this.mimeOf(path) },
-      { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' },
+      { headerKey: 'Access-Control-Allow-Origin', headerValue: APP_ORIGIN },
       // 本地虚拟主机零延迟；no-store 防止 ArkWeb HTTP 缓存在构建更新后
       // 供旧 index.html/chunk（D12 曾致 reload 循环+新旧 shim 混跑）
       { headerKey: 'Cache-Control', headerValue: 'no-store' }
@@ -114,6 +130,14 @@ export class RawFileServer {
     response.setReasonMessage('OK');
 
     const filePath: string = `${root}${path}`;
+    // V-01：书籍主机的非 /asset/ 路径同样走业务目录白名单（此前整个
+    // filesDir 可经 http://readest.ohos.internal/<相对路径> 读取）
+    if (isBooks && !this.booksPathAllowed(filePath)) {
+      response.setResponseCode(403);
+      response.setReasonMessage('Forbidden');
+      response.setResponseData('forbidden');
+      return response;
+    }
     const data: ArrayBuffer | null = this.readSync(filePath);
     if (data !== null) {
       response.setResponseData(this.htmlWithGuard(path, data));
@@ -127,7 +151,7 @@ export class RawFileServer {
       if (shellData !== null) {
         response.setResponseHeader([
           { headerKey: 'Content-Type', headerValue: 'text/html' },
-          { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
+          { headerKey: 'Access-Control-Allow-Origin', headerValue: APP_ORIGIN }
         ]);
         response.setResponseData(this.htmlWithGuard(`${path}.html`, shellData));
         return response;
@@ -136,7 +160,7 @@ export class RawFileServer {
       if (indexData !== null) {
         response.setResponseHeader([
           { headerKey: 'Content-Type', headerValue: 'text/html' },
-          { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
+          { headerKey: 'Access-Control-Allow-Origin', headerValue: APP_ORIGIN }
         ]);
         response.setResponseData(this.htmlWithGuard('/index.html', indexData));
         return response;
@@ -217,8 +241,7 @@ export class RawFileServer {
         end = parseInt(value) || 0;
       }
     }
-    const allowedRoot: boolean = this.filesRoot.length > 0 && p.startsWith(this.filesRoot)
-      || this.cacheRoot.length > 0 && p.startsWith(this.cacheRoot);
+    const allowedRoot: boolean = this.booksPathAllowed(p);
     if (!p || p.includes('..') || !allowedRoot) {
       response.setResponseCode(403);
       response.setReasonMessage('Forbidden');
@@ -233,6 +256,10 @@ export class RawFileServer {
       return response;
     }
     const total: number = data.byteLength;
+    // V-09：负 start 未钳制时 subarray(-n,…) 从尾部切片，违反 Range 语义
+    if (start < 0) {
+      start = 0;
+    }
     if (end < 0 || end >= total) {
       end = total - 1;
     }
@@ -247,7 +274,7 @@ export class RawFileServer {
     response.setResponseHeader([
       { headerKey: 'Content-Type', headerValue: this.mimeOf(p) },
       { headerKey: 'X-Total-Size', headerValue: String(total) },
-      { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' }
+      { headerKey: 'Access-Control-Allow-Origin', headerValue: APP_ORIGIN }
     ]);
     response.setResponseData(slice);
     return response;

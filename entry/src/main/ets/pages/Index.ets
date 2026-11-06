@@ -155,7 +155,7 @@ struct Index {
   private setupBridge(): void {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     nativeBridge.setController(this.controller, context);
-    // 前端 set_window_title → PC 窗口标题栏（品牌名已由桥内替换为"展卷"）
+    // 前端 set_window_title → PC 窗口标题栏（品牌名已由桥内替换为"阅易"）
     nativeBridge.setWindowTitleHandler((title: string): void => {
       window.getLastWindow(context)
         .then((win: window.Window): Promise<void> => win.setWindowTitle(title))
