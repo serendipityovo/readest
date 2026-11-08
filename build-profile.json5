@@ -33,7 +33,7 @@
         "name": "default",
         // 真机回归用调试签名（release 证书签名包仅限市场渠道安装，hdc 直装被拒
         // 9568322）；出上架 .app 时切回 "release"
-        "signingConfig": "default",
+        "signingConfig": "release",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.0(23)",
         "runtimeOS": "HarmonyOS",

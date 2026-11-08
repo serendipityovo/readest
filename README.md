@@ -2,7 +2,7 @@
 
 > 阅易是一款运行于 HarmonyOS（含 PC/2in1 设备）的**本地优先**电子书阅读器，
 > 基于开源项目 [readest](https://github.com/readest/readest)（AGPL-3.0）移植构建。
-> 应用商店名「阅易阅读器」，包名 `com.yueyi.app`（2026-11-06 由 com.readest.app 变更，商店侧需同步新建应用）。
+> 应用商店名「阅易阅读器」，包名 `com.yueyi.app`（2026-11-06 由 com.yueyi.app 变更，商店侧需同步新建应用）。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
