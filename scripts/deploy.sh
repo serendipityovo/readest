@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 HDC="/e/DevEco Studio/sdk/default/openharmony/toolchains/hdc.exe"
-BUNDLE="com.readest.app"
+BUNDLE="com.yueyi.app"
 ABILITY="EntryAbility"
 OUT="entry/build/default/outputs/default"
 

@@ -128,7 +128,7 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 
 | 位置 | 理由 |
 |---|---|
-| `AppScope/app.json5` `bundleName: com.readest.app` | README 明示包名沿用（上架标识） |
+| `AppScope/app.json5` `bundleName: com.yueyi.app`（2026-11-06 由 com.readest.app 变更，versionCode 1000002） | 品牌独立彻底化；AGC 侧需新建应用记录并重签发布 Profile（见 PUBLISH.md） |
 | 虚拟主机 `readest.local` / `readest.ohos.internal` / `rangefile.localhost` | 进程内网络名，不可见 |
 | hilog tag `readestD9`/`readestWant`、`[ReadestOhos]` 前缀、源码注释 | 内部日志/注释 |
 | `storage.readest.com`（字体 CDN）等上游资源 URL | 功能依赖上游资源分发 |
@@ -246,7 +246,7 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 
 ### 8.4 ⚠️ 设备状态披露与恢复步骤
 
-测试过程中为验证新构建安装执行了 `bm uninstall com.readest.app`，随后因 debug 证书过期**无法重装**，设备当前**未安装本应用**。恢复步骤（需人工，约 5 分钟）：
+测试过程中为验证新构建安装执行了 `bm uninstall com.readest.app`（当时包名，现已变更为 com.yueyi.app），随后因 debug 证书过期**无法重装**，设备当前**未安装本应用**。恢复步骤（需人工，约 5 分钟）：
 
 1. 打开 DevEco Studio → File→Project Structure→Signing Configs→勾选 Automatically generate signature，重新登录华为账号生成新 debug 证书/profile（覆盖 `~/.ohos/config`）；
 2. `bash scripts/deploy.sh --build`（构建+签名+安装+启动一条龙），预期 `AppMod finish`。
@@ -267,11 +267,77 @@ Web 层（前端功能面，即上游代码 + shim/mock 桥）七探针全绿，
 
 | 项 | 修复 | 状态 |
 |---|---|---|
-| **V-16** | `handleWant` 重构：file:// want 先借临时授权拷入 `filesDir/imports/`（`settleWantUri` 双 URI 形态回退），后续 get_current/shared-intent/OPEN_WITH_FILES 全链走沙箱路径；拷贝失败回退旧行为（原始 uri + 优雅报错） | 代码落地，编译门 BUILD SUCCESSFUL；**真机验证待证书续期** |
-| **V-17** | 无监听时新增第三通道：`pushOpenWithFiles` 经 `runJavaScript` 调用前端库页自备的 `window.OPEN_WITH_FILES([path])` 入口（上游 `processOpenWithFiles` 全量 ingest 语义）；pendingIntent 兜底保留 | 同上 |
+| **V-16** | `handleWant` 重构：file:// want 先借临时授权拷入 `filesDir/imports/`（`settleWantUri` 双 URI 形态回退），后续 get_current/shared-intent/OPEN_WITH_FILES 全链走沙箱路径；拷贝失败回退旧行为（原始 uri + 优雅报错） | 代码落地，编译门 BUILD SUCCESSFUL；**机制级真机验证通过（§10.2），真实文件管理器场景待人工确认** |
+| **V-17** | 无监听时新增第三通道：`pushOpenWithFiles` 经 `runJavaScript` 调用前端库页自备的 `window.OPEN_WITH_FILES([path])` 入口（上游 `processOpenWithFiles` 全量 ingest 语义）；pendingIntent 兜底保留 | 同上（§10.2 实证 push 日志） |
 | 冷启动竞态 | `get_current` 等待在飞 `wantSettle`（大文件拷贝 vs 前端启动轮询窗口） | 代码内注释 |
 | **V-18** | 备案：`--ps selftest 1` 仅冷启生效，onNewWant 注释注明复测须 force-stop 冷启 | 文档化 |
 | R2 | SelfTest download 用例 URL `favicon.ico`→`favicon.png`（tuna .ico 已全网 404，.png 200）+ 落盘扩展名对齐 | 待真机复跑 64/64 |
 | **D-8** | 修复方向=对齐上游（上游桌面双击开书可用）：V-16/17 修复后冷/热启动"打开方式"均应可用；验证后从差异表移除 | 待真机 |
 
 验证：`BUILD SUCCESSFUL in 38s`（grep 显式门）。运行时复验依赖调试证书续期（§8.4 步骤，需 DevEco GUI 重签）。
+
+---
+
+## 10. 二轮真机复验（2026-11-07 凌晨 · com.yueyi.app 新包 · §9 修复的运行时验证）
+
+> 背景：工程包名变更为 **com.yueyi.app**（versionCode 1000002）；签名材料经 DevEco 重新申请（新 profile 绑新包名 + 本机 UDID）；`deploy.sh --build` 构建/签名/安装/启动**全绿**，应用已回到设备。
+
+### 10.1 新发现回归与修复（brand_rename 半截改名 · 当场闭环）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 新包冷启动出现 `KI5-REJ TypeError: (0,v.isReadestCloudStorageActive) is not a function`（§7 修复批次引入；旧包零 REJ） |
+| 根因 | turbopack 把命名导出注册为**带引号的标识符键**（`"isReadestCloudStorageActive": fn`），`brand_rename.py` 只替换字符串字面量 → 键侧改成 `is阅易CloudStorageActive` 而引用侧仍为原标识符，跨模块绑定断裂。同类共 **4 个标识符族**：isReadestCloudStorageActive / isReadestCloudEnabled / persistReadestCloudChoice / getReadestVoiceAPIBaseUrl |
+| 修复 | ① 设备包 + lab 副本共 48 个 chunk：两形态统一为 **yueyi** 形式（`isYueyiCloudStorageActive` 等），逐文件 `node --check` 语法门零回滚；② `brand_rename.py` 新增守卫：**整串为标识符形状的字符串一律不改**（防复发） |
+| 复验 | 重打包装机后冷启动 **KI5-REJ 归零**；标题链 `set_title raw=阅易 → setWindowTitle ok: 阅易` 正常 |
+
+### 10.2 §9 修复的运行时验证（V-16/V-17 机制级通过）
+
+| 项 | hilog 实录证据 |
+|---|---|
+| V-16 want 沙箱化 | `handleWant uri=file:///…files/settings.json` → **`picked copied 12763 bytes -> files/imports/settings.json`**（借 want 授权拷贝入沙箱，fs 链路不再被 assertSandboxPath 拒绝） |
+| V-17 第三通道 | 无监听时 **`shared-intent push via OPEN_WITH_FILES`**——`window.OPEN_WITH_FILES([...])` 推送，载荷到达前端 |
+| 失败回退 | 应用命名空间外路径（/data/local/tmp → 13900002 ENOENT）：`want sandbox copy failed` 后**优雅回退**旧行为，不崩溃 |
+| 方法限制 | shell 无法向应用命名空间投送可授权文件（/data/local/tmp 不可见、app 沙箱不可写），**真实文件管理器"打开方式"为最后一公里人工确认项**（约 30 秒） |
+
+### 10.2b 真实"打开方式"三连环根因与终验（2026-11-07 00:48 PASS）
+
+用户以真实文件管理器（右键 epub → 打开方式 → 阅易）复测，暴露 **§9 修复之下的三层连环缺陷**，逐层定位逐层修复：
+
+| # | 缺陷 | 真机证据 | 修复 |
+|---|---|---|---|
+| ① | **推送当函数调用（恒空操作）**：`window.OPEN_WITH_FILES` 上游语义是**数据数组**（上游赋值后带 reload 导航库页再由 parseOpenWithFiles 读取），桥按 `typeof==='function'` 守卫调用 → 永不执行 | 前端 chunk 反查：`window.OPEN_WITH_FILES=a`（赋数组）+ `parseOpenWithFiles` 读取顺序 `?file=` 参数 → 数组 → 启动URL | pushOpenWithFiles 改为**上游第一优先级契约**：赋数组 + `location.assign('/library?file=<enc>&reload=…')`（数据在 URL，整页导航不丢） |
+| ② | **冷启动 context 空指针**：onCreate 时 Index 页未运行，桥 `context=null`，`importPickedUriToSandbox` 读 `context!.filesDir` 抛 TypeError（错误被 JSON.stringify 成 `{}` 掩盖） | `Ability onCreate` 与 `want sandbox copy failed: {}` **同一毫秒**（同步空指针特征） | EntryAbility.onCreate 先 `setContextForTest(this.context)` 再 handleWant；catch 日志改打 code/message |
+| ③ | **回填裸路径缺 `file://` 前缀**：拷贝产物以裸沙箱路径回填启动 URL，前端 `isFileUrl` 判定要求 file:// scheme → `Skip non-file URL` 丢弃 | console：`Intent Open with URL: /data/storage/…` 紧跟 `Skip non-file URL: /data/storage/…`（前端已收到、被过滤） | 回填统一 `finalUrl = 'file://' + path`（fsPath 侧本就剥前缀还原） |
+
+**终验（PASS）**：修复后真实文件管理器冷启动"打开方式"全链绿——
+```
+handleWant uri=file://docs/storage/Users/currentUser/Desktop/hongloumeng.epub
+picked copied 1151585 bytes -> files/imports/hongloumeng.epub
+shared-intent push via OPEN_WITH_FILES: file:///data/storage/…/imports/hongloumeng.epub
+[web] Intent Open with URL: file:///data/storage/…/imports/hongloumeng.epub   ← 无 Skip
+fs|open resolve ok=true (rid=1,2,3,4,5…)                                       ← 书被解析读取
+```
+用户确认：书架出现《红楼梦》。**V-16/V-17/D-8 正式关闭**（与上游"双击开书"行为对齐）。附注：前端 shared-intent 监听仅 `isAndroidApp` 注册（os_type=windows 下恒 false），桥侧 ?file= 通道为其等价替代，此差异已在 ① 修复注释中固化为契约说明。
+
+### 10.3 新包终态
+
+- 装机链路全绿（新 profile 绑 com.yueyi.app + 本机）；resources.index **0×Readest / 7×阅易**；KI5 探针全 true、REJ 零；
+- 文件管理器真实"打开方式"冷启动导入 **PASS**（用户确认书架出现《红楼梦》，见 §10.2b 终验）。
+
+### 10.4 V-19 关书白屏（真机实测发现 · 已修复验证）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 阅读中点"关书"叉 → 窗口白屏（进程与 web 均存活，仍在收输入事件） |
+| 根因 | 上游多窗口语义：关书 = `plugin:window\|close` 关闭书窗口；本移植单窗口对该命令走 default 空操作返回 null，前端在"窗口已关"假设下停止渲染 → 白屏壳。hilog 铁证：`Closing book → invoke plugin:window|close → resolve null` 之后前端静默 |
+| 修复 | 桥新增 `plugin:window\|close` case：等价映射为 `location.assign('/library')`（= 上游"关书窗口后露出库窗口"），返回 null 保持 invoke 契约 |
+| 复验 | 用户确认：关书叉 → 正常回书架，再开书正常 |
+
+**多窗口移植评估结论**（应询）：单窗口为有意取舍（README 差异表备案）；窗口子系统多控制器化（label 注册表/按窗口注入 shim/窗口事件路由）估算 3–5 天专项+全量回归，建议列为发布后用户反馈驱动的新特性；现阶段策略=补齐单窗口等价映射（window|close 为第一例）。
+
+### 10.5 剩余事项
+
+1. 热启动"打开方式"（应用开着时右键另一本书）走同一推送通道，可选快速复核；
+2. AGC 按新包名 com.yueyi.app 重建应用记录 + 重签发布 Profile（上架前必做，PUBLISH.md 清单）；
+3. SelfTest 64 用例含 favicon.png 新 URL 的复跑（预期全绿）。

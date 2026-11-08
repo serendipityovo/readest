@@ -42,9 +42,9 @@ export DEVECO_SDK_HOME="E:\\DevEco Studio\\sdk"
 ```bash
 HDC="/e/DevEco Studio/sdk/default/openharmony/toolchains/hdc"
 "$HDC" install -r "D:\\...\\entry-default-unsigned.hap"   # 模拟器可装未签名；真机需签名（见 SIGNING.md）
-"$HDC" shell "aa start -b com.readest.app -a EntryAbility"
+"$HDC" shell "aa start -b com.yueyi.app -a EntryAbility"
 # 桥接自测页直达（D11 冒烟入口）：
-"$HDC" shell "aa start -b com.readest.app -a EntryAbility --ps selftest 1"
+"$HDC" shell "aa start -b com.yueyi.app -a EntryAbility --ps selftest 1"
 ```
 
 ## 5. 一条龙

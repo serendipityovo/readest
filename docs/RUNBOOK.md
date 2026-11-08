@@ -33,10 +33,10 @@
 ### D. 签名构建装机（自动，~5min）
 1. `bash scripts/deploy.sh`（构建→安装→启动一条龙）。
 2. 预期：`AppMod finish` + `start ability successfully`。
-   - 失败：安装报错 9568289（签名不匹配）→ 卸载旧包重装；`hdc install` 失败 → 查 `bm dump -n com.readest.app`。
+   - 失败：安装报错 9568289（签名不匹配）→ 卸载旧包重装；`hdc install` 失败 → 查 `bm dump -n com.yueyi.app`。
 
 ### E. 冒烟页验桥（自动，~3min）
-1. `aa start -b com.readest.app -a EntryAbility --ps selftest 1` → 等 90s → dumpLayout。
+1. `aa start -b com.yueyi.app -a EntryAbility --ps selftest 1` → 等 90s → dumpLayout。
 2. 预期：summary 含 `60/62` 或更好（基线 = 模拟器实测 60/62 + 2 SKIP）。
    - 失败：逐组看 THROW 条目 → 对照 COMMANDS.md 契约修；TTS 组 THROW → KI-1 范畴。
 

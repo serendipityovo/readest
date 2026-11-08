@@ -6,11 +6,11 @@ OUT=/d/Projects/ReadestOhos/artifacts/d11/soak_result.txt
 cd /d/Projects/ReadestOhos
 
 "$HDC" shell "hilog -r" >/dev/null 2>&1
-"$HDC" shell "aa force-stop com.readest.app" >/dev/null 2>&1; sleep 2
-"$HDC" shell "aa start -b com.readest.app -a EntryAbility -A ohos.want.action.viewData -U file:///data/storage/el2/base/haps/entry/files/inbox/hongloumeng.epub" >/dev/null 2>&1
+"$HDC" shell "aa force-stop com.yueyi.app" >/dev/null 2>&1; sleep 2
+"$HDC" shell "aa start -b com.yueyi.app -a EntryAbility -A ohos.want.action.viewData -U file:///data/storage/el2/base/haps/entry/files/inbox/hongloumeng.epub" >/dev/null 2>&1
 sleep 30
 
-PID=$("$HDC" shell "ps -ef | grep 'com.readest.app$' | grep -v grep | awk '{print \$2}'" | tr -d '\r')
+PID=$("$HDC" shell "ps -ef | grep 'com.yueyi.app$' | grep -v grep | awk '{print \$2}'" | tr -d '\r')
 SOCK=$("$HDC" shell "cat /proc/net/unix" 2>/dev/null | python -c "
 import sys,re
 socks=[]

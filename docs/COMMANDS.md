@@ -3,7 +3,7 @@
 > 权威命令契约表。设备实现源：`entry/src/main/ets/services/NativeBridge.ets`（dispatch switch，101+ case）+ `NativeTts.ets`（Core Speech Kit）。
 > 前端契约源：readest `utils/bridge.ts`、`services/tts/NativeTTSClient.ts`、各 hook/service。
 > 状态图例：**✅ 已实现**（编译门过，形状对照源码核验）｜**🔬 形状已定，D13 真机核销**（依赖真机 Kit 行为）｜**↘️ 降级**（语义正确的功能降级，返回形状符合契约）｜**🟡 GAP**（未实现，标注目标日）。
-> 自测：`pages/SelfTest.ets`（62 用例一键触发；**D9 模拟器实跑 60/62 非 THROW + 2 SKIP（picker 交互类）零 THROW**）。直达入口：`aa start -b com.readest.app -a EntryAbility --ps selftest 1`。
+> 自测：`pages/SelfTest.ets`（62 用例一键触发；**D9 模拟器实跑 60/62 非 THROW + 2 SKIP（picker 交互类）零 THROW**）。直达入口：`aa start -b com.yueyi.app -a EntryAbility --ps selftest 1`。
 
 ## D7 关键契约发现（双端已修，真机免坑）
 

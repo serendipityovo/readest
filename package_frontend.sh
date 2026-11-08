@@ -113,6 +113,12 @@ rm -rf "$RAW_DIR/.well-known"
 rm -rf "$RAW_DIR/updater"
 rm -f "$RAW_DIR/updater.html" "$RAW_DIR/updater.txt"
 
+# 关于页版权行加发行者声明（审核 1.20/一致性问题：AGPL 署名保留的同时
+# 标明本发行版开发者与 AGC 开发者信息一致）
+for CB in $(grep -l ' Bilingify LLC. All rights reserved.' "$RAW_DIR"/_next/static/chunks/*.js); do
+  sed -i 's/ Bilingify LLC. All rights reserved./ Bilingify LLC（上游 readest 项目，AGPL-3.0）· 本发行版「阅易」由 夏茂钦 发布并同样以 AGPL-3.0 开源：github.com\/serendipityovo\/readest/' "$CB" || true
+done
+
 echo "[7/7] writing buildstamp (drives incremental extraction on device)..."
 date +%s > "$RAW_DIR/buildstamp.txt"
 

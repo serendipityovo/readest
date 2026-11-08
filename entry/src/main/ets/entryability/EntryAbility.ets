@@ -29,8 +29,15 @@ export default class EntryAbility extends UIAbility {
     }
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
     hilog.error(DOMAIN, 'readestWant', 'onCreate want=%{public}s', JSON.stringify(want).slice(0, 400));
-    // D9 文件关联：冷启动"打开方式"want（uri 暂存，前端监听就位后补投）
+    // D9 文件关联：冷启动"打开方式"want（uri 暂存，前端监听就位后补投）。
+    // 冷启动竞态修复（真机实证 00:40:49）：onCreate 时 Index 页尚未运行，
+    // nativeBridge.context 为 null——handleWant→settleWantUri→importPickedUriToSandbox
+    // 读 this.context!.filesDir 抛 TypeError（"want sandbox copy failed: {}"同一毫秒），
+    // 拷贝必败回退原始 docs:// uri 又被沙箱钳制拒绝 → 书永远不入库。
+    // 先注入 context 再处理 want（setContextForTest 仅设 context/TTS 监听/DB 上下文，
+    // 页面就位后 setController 会完整覆盖，无副作用）
     try {
+      nativeBridge.setContextForTest(this.context);
       nativeBridge.handleWant(want);
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'handleWant failed: %{public}s', JSON.stringify(err));

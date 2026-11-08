@@ -17,11 +17,13 @@ is restored untouched and reported.
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 
 BRAND = '\u9605\u6613'  # 阅易
 OLD = 'Readest'
+_IDENT_RE = re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*')
 FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         '..', 'entry', 'src', 'main', 'resources', 'rawfile', 'frontend')
 FRONTEND = os.path.normpath(FRONTEND)
@@ -58,6 +60,26 @@ def patch_js_source(s: str):
             return False
         top = stack[-1]
         return top[0] == 'q' or (top[0] == 'tpl' and top[1] == 0)
+
+    def quoted_ident_verbatim(i: int):
+        # Guard (2026-11-07 regression fix): turbopack registers named exports as
+        # quoted identifier keys ("isReadestCloudStorageActive": fn) while importers
+        # reference them as bare identifiers — renaming one side breaks the binding
+        # (runtime TypeError "is not a function"). A string whose ENTIRE content is
+        # identifier-shaped is a programmatic key, never user copy: emit verbatim.
+        q = s[i]
+        j = i + 1
+        while j < n:
+            if s[j] == '\\':
+                return None  # escaped content: not a plain identifier key
+            if s[j] == q:
+                break
+            j += 1
+        else:
+            return None
+        if j > i + 1 and _IDENT_RE.fullmatch(s[i + 1:j]):
+            return j  # index of the closing quote
+        return None
 
     while i < n:
         c = s[i]
@@ -99,6 +121,12 @@ def patch_js_source(s: str):
         # code region
         kw = prev_sig.isalpha() and _after_keyword(out)
         if c in ('"', "'") and (prev_sig == '' or prev_sig in OPENERS or kw):
+            vend = quoted_ident_verbatim(i)
+            if vend is not None:
+                out.append(s[i:vend + 1])
+                prev_sig = s[vend]
+                i = vend + 1
+                continue
             stack.append(['q', c])
             out.append(c)
             prev_sig = c

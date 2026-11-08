@@ -5,7 +5,7 @@
 set -e
 HDC="/e/DevEco Studio/sdk/default/openharmony/toolchains/hdc.exe"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUNDLE="com.readest.app"
+BUNDLE="com.yueyi.app"
 ABILITY="EntryAbility"
 WAIT="${SMOKE_WAIT:-8}"   # 首启含解包，可 SMOKE_WAIT=25 放宽
 

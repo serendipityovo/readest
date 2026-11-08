@@ -263,23 +263,33 @@ export class NativeBridge {
     // ③ 无监听时经 window.OPEN_WITH_FILES 主动推送（上游库页自备入口）
     this.wantSettle = this.settleWantUri(uri)
       .then((finalUri: string): void => {
-        this.deepLinkLaunchUrls = [finalUri];
-        const payload: SharedIntentPayload = { urls: [finalUri], action: action };
+        // 前端 isFileUrl 判定要求 file:// 前缀（真机实证：裸沙箱路径被
+        // "Skip non-file URL" 过滤丢弃，书不入库）——统一回填为 file URL：
+        // '/data/…' → 'file:///data/…'（fsPath 会剥前缀还原沙箱路径）
+        const finalUrl: string = finalUri.startsWith('file://') ? finalUri : `file://${finalUri}`;
+        this.deepLinkLaunchUrls = [finalUrl];
+        const payload: SharedIntentPayload = { urls: [finalUrl], action: action };
         const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
         if (listeners !== undefined && listeners.length > 0) {
           hilog.info(0x0107, 'readestD9', 'shared-intent emit direct (%{public}d listeners)',
             listeners.length);
           this.emitChannel('native-bridge', 'shared-intent', payload);
         } else {
-          hilog.info(0x0107, 'readestD9', 'shared-intent push via OPEN_WITH_FILES');
+          hilog.info(0x0107, 'readestD9', 'shared-intent push via OPEN_WITH_FILES: %{public}s',
+            finalUrl.slice(0, 70));
           this.pendingIntent = payload;
-          this.pushOpenWithFiles([finalUri]);
+          this.pushOpenWithFiles([finalUrl]);
         }
       })
       .catch((e: Error): void => {
-        // 拷贝失败退回旧行为（原始 uri 直投——大概率被沙箱拒绝并优雅报错）
-        hilog.warn(0x0107, 'readestD9', 'want sandbox copy failed: %{public}s',
-          JSON.stringify(e).slice(0, 120));
+        // 拷贝失败退回旧行为（原始 uri 直投——大概率被沙箱拒绝并优雅报错）。
+        // 注意 BusinessError/TypeError 的 JSON.stringify 是 "{}"——必须打
+        // code/message 才能定位（00:40 真机案例：context 未注入的 TypeError
+        // 曾被序列化成空对象，误导为 fileIo 权限问题）
+        const be: BusinessError = e as BusinessError;
+        hilog.warn(0x0107, 'readestD9',
+          'want sandbox copy failed: code=%{public}d msg=%{public}s name=%{public}s',
+          Number(be.code ?? -1), String(be.message ?? e).slice(0, 100), String(e.name ?? e).slice(0, 40));
         this.deepLinkLaunchUrls = [uri];
         const payload: SharedIntentPayload = { urls: [uri], action: action };
         const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
@@ -302,14 +312,24 @@ export class NativeBridge {
     }
   }
 
-  /** V-17：无 shared-intent 监听时借库页自备的 window.OPEN_WITH_FILES 入口推送 */
+  /** V-17：无 shared-intent 监听时的主动推送。
+   * 上游契约（dist-js parseOpenWithFiles 实证）：
+   *   ① isAndroidApp 才注册 shared-intent 插件监听——本移植 os_type='windows'
+   *      （桌面 openFile 语义依赖它），判定恒 false，监听永不注册；
+   *   ② window.OPEN_WITH_FILES 是**数据数组**（上游自行赋值后带 reload 导航
+   *      库页再读取），不是函数——按函数调用是空操作（真机"书未入库"根因）；
+   *   ③ parseOpenWithFiles 第一优先级读 URL 的 ?file= 参数——数据在 URL 里，
+   *      整页导航也不丢。推送 = 赋数组 + 导航 /library?file=…&reload=…。
+   */
   private pushOpenWithFiles(paths: string[]): void {
     if (!this.controller) {
       return;
     }
-    const js: string = `try{if(typeof window.OPEN_WITH_FILES==='function'){` +
-      `window.OPEN_WITH_FILES(${JSON.stringify(paths)});` +
-      `window.__WANT_PUSHED=Date.now();}}catch(e){}`;
+    const js: string = `try{` +
+      `window.OPEN_WITH_FILES=${JSON.stringify(paths)};` +
+      `var q=${JSON.stringify(paths)}.map(function(p){return 'file='+encodeURIComponent(p);}).join('&');` +
+      `location.assign('/library?'+q+'&reload='+Date.now());` +
+      `window.__WANT_PUSHED=Date.now();}catch(e){}`;
     try {
       this.controller.runJavaScript(js);
     } catch (e) {
@@ -1123,6 +1143,18 @@ export class NativeBridge {
         // 直接 .map/.sort，null 会 TypeError（真机 release 回归实测）
         const wins: WindowEntry[] = [{ label: 'main' }];
         return wins;
+      }
+      case 'plugin:window|close': {
+        // 上游多窗口语义：close = 关闭书窗口（关书按钮/意图处理均会调用）。
+        // 单窗口移植的等价映射 = 导航回书库页（上游关书窗口后露出库窗口）。
+        // 真机实证（00:50:34 白屏）：空操作会让前端在"窗口已关"假设下停止
+        // 渲染 → 白屏窗口（进程与 web 均存活）。返回 null 保持 invoke 契约。
+        try {
+          this.controller?.runJavaScript("location.assign('/library')");
+        } catch (e) {
+          // web 未就绪时忽略（下一次加载天然回到 index）
+        }
+        return null;
       }
       case 'set_window_title':
       case 'plugin:window|set_title': {
