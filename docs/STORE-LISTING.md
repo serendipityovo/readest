@@ -52,7 +52,7 @@
 
 | 表单 | 填写 |
 |---|---|
-| 隐私声明 | ✅ AGC 隐私托管已生成（2026-10-25）。托管 URL：https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2069224619277081280 |
+| 隐私声明 | ✅ AGC 隐私托管已生成（2026-10-25）。托管 URL：https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2079255097166058752 |
 | 隐私标签 | 基本不收集个人信息；可选项：匿名使用统计（用户主动开启） |
 | 权限用途（INTERNET） | 访问用户主动配置的在线书城（OPDS）、在线词典查询、云同步、系统语音合成资源 |
 | AI 功能声明 | 无 AI 功能（TTS 为系统语音合成） |

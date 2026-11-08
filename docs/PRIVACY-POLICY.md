@@ -4,7 +4,7 @@
 > + 本移植工程实际权限/数据面核实结果。
 >
 > **正式生效版本**：本草案已于 2026-10-25 经 AGC「隐私声明托管」生成上线——
-> https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2069224619277081280
+> https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2079255097166058752
 > （本文件保留作为口径底稿；有出入以托管版为准）
 >
 > 用法二选一：
