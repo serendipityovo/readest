@@ -147,7 +147,7 @@ struct SelfTest {
 
   build() {
     Column() {
-      Text('阅易 · 桥接自测页')
+      Text('阅易阅读器 · 桥接自测页')
         .fontSize(18).fontWeight(FontWeight.Bold).padding(12)
       Text(this.summary).fontSize(13).fontColor('#666').padding({ bottom: 8 })
       Button('全部运行').onClick(() => {

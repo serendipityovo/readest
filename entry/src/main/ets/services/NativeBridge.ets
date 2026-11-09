@@ -1334,7 +1334,7 @@ export class NativeBridge {
         const rawTitle: string = String(args['value'] ?? args['title'] ?? '');
         hilog.info(0x0107, 'readestD9', 'set_title raw=%{public}s', rawTitle.slice(0, 40));
         if (rawTitle.length > 0) {
-          const reTitle: string = rawTitle.replace(/readest/gi, '阅易');
+          const reTitle: string = rawTitle.replace(/readest/gi, '阅易阅读器');
           try {
             this.windowTitleHandler?.(reTitle);
           } catch (e) {
@@ -1396,7 +1396,7 @@ export class NativeBridge {
       case 'localsend_start': {
         const status: LocalSendStatus = {
           running: true,
-          alias: '阅易',
+          alias: '阅易阅读器',
           port: 53317,
           fingerprint: 'ohos:degraded',
           deviceModel: 'HarmonyOS',
@@ -1408,7 +1408,7 @@ export class NativeBridge {
       case 'localsend_get_status': {
         const st: LocalSendStatus = {
           running: true,
-          alias: '阅易',
+          alias: '阅易阅读器',
           port: 53317,
           fingerprint: 'ohos:degraded',
           deviceModel: 'HarmonyOS',

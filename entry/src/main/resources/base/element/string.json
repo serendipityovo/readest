@@ -2,11 +2,11 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "阅易电子书阅读器入口模块"
+      "value": "阅易阅读器入口模块"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "阅易电子书阅读器主能力"
+      "value": "阅易阅读器主能力"
     },
     {
       "name": "EntryAbility_label",

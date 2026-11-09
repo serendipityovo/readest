@@ -79,22 +79,7 @@ for p in glob.glob(r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/fr
 print("all route shells hardened")
 EOF
 
-echo "[6/7] brand patch (阅易 rebrand, review 9.5)..."
-# titles: <title> → 阅易（动态设置由 shim document.title 劫持兜底）
-sed -i 's#<title>[^<]*</title>#<title>阅易</title>#' "$RAW_DIR"/*.html
-# locale 值侧大写 Readest → 阅易（键不动=查找语义；小写 readest 不动=URL/邮箱）
-# 多轮防同值双次出现被贪婪吞掉
-for pass in 1 2 3; do
-  for f in "$RAW_DIR"/locales/*/translation.json; do
-    if [ "$f" = "$RAW_DIR/locales/zh-TW/translation.json" ]; then
-      sed -i 's/: "\([^"]*\)Readest\([^"]*\)"/: "\1閱易\2"/g' "$f"
-    else
-      sed -i 's/: "\([^"]*\)Readest\([^"]*\)"/: "\1阅易\2"/g' "$f"
-    fi
-  done
-done
-# chunk 内页脚链接文字等独立品牌串（仅精确 children 字面量，不碰 URL/标识符）
-sed -i 's/children:"Readest"/children:"阅易"/g' "$RAW_DIR"/_next/static/chunks/*.js
+echo "[6/7] brand engine prep (阅易阅读器): paywall patterns below run on raw English..."
 
 # 付费墙整体移除（fork 无上游支付后端）：设置菜单 Premium 入口条件永假 +
 # /user 页套餐对比组件替换为 null 渲染（模式经唯一性验证，chunk 名可变，
@@ -105,18 +90,33 @@ HIT1=$(grep -l 'c&&"free"===d&&(0,n.jsx)(af.default,{label:s("Upgrade to Readest
 HIT2=$(grep -l '(0,a.jsx)(eD,{availablePlans:ea,' "$RAW_DIR"/_next/static/chunks/*.js | head -1)
 [ -n "$HIT2" ] && sed -i 's/(0,a.jsx)(eD,{availablePlans:ea,/(0,a.jsx)(()=>null,{availablePlans:ea,/' "$HIT2" || echo "WARN: plans pattern not found"
 
-echo "[6b/7] string-literal brand rename (阅易, node --check gated)..."
+echo "[6b/7] brand engine (阅易阅读器, string-context patcher + node --check gated)..."
 python scripts/brand_rename.py
 
-echo "[6c/7] dead resources (upstream mobile-assoc / disabled updater)..."
+echo "[6c/7] dead resources + title normalize (阅易阅读器)..."
 rm -rf "$RAW_DIR/.well-known"
 rm -rf "$RAW_DIR/updater"
 rm -f "$RAW_DIR/updater.html" "$RAW_DIR/updater.txt"
+# 标语标题与 <title> 归一（阅易阅读器）：tagline 短语整句替换 + 短名归一
+python - <<'BRANDNE'
+import io, re, os, glob
+RAW = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend"
+BRAND = "阅易阅读器"
+tl = re.compile(r"(?:阅易阅读器|阅易|Readest)\s*[—–-]\s*Where You Read, Digest and Get Insight")
+norm = re.compile(r"阅易(?!阅读器)")
+for p in glob.glob(os.path.join(RAW, "*.html")):
+    s = io.open(p, encoding="utf-8", errors="ignore").read()
+    s2 = tl.sub(BRAND, s)
+    s2 = norm.sub(BRAND, s2)
+    if s2 != s:
+        io.open(p, "w", encoding="utf-8").write(s2)
+        print("  html:", os.path.basename(p))
+BRANDNE
 
 # 关于页版权行加发行者声明（审核 1.20/一致性问题：AGPL 署名保留的同时
 # 标明本发行版开发者与 AGC 开发者信息一致）
 for CB in $(grep -l ' Bilingify LLC. All rights reserved.' "$RAW_DIR"/_next/static/chunks/*.js); do
-  sed -i 's/ Bilingify LLC. All rights reserved./ Bilingify LLC（上游 readest 项目，AGPL-3.0）· 本发行版「阅易」由 夏茂钦 发布并同样以 AGPL-3.0 开源：github.com\/serendipityovo\/readest/' "$CB" || true
+  sed -i 's/ Bilingify LLC. All rights reserved./ Bilingify LLC（上游 readest 项目，AGPL-3.0）· 本发行版「阅易阅读器」由 夏茂钦 发布并同样以 AGPL-3.0 开源：github.com\/serendipityovo\/readest/' "$CB" || true
 done
 
 echo "[7/7] writing buildstamp (drives incremental extraction on device)..."

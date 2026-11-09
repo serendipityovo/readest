@@ -16,7 +16,7 @@
         configurable: true,
         get: function () { return titleDesc.get.call(document); },
         set: function (v) {
-          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613')); }
+          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613\u9605\u8bfb\u5668')); }
           catch (e) { /* never block the page */ }
         }
       });

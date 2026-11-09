@@ -21,7 +21,8 @@ import re
 import subprocess
 import sys
 
-BRAND = '\u9605\u6613'  # 阅易
+BRAND = '阅易阅读器'  # 阅易阅读器（与 AGC 应用名逐字一致）
+SHORT = '阅易'  # 历史短名：阅易（产物归一化源）
 OLD = 'Readest'
 _IDENT_RE = re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*')
 FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -84,6 +85,17 @@ def patch_js_source(s: str):
     while i < n:
         c = s[i]
         if replaceable():
+            if s.startswith(BRAND, i):
+                out.append(BRAND)
+                i += len(BRAND)
+                prev_sig = BRAND[-1]
+                continue
+            if s.startswith(SHORT, i):
+                out.append(BRAND)  # 历史短名归一化（阅易→阅易阅读器）
+                changed += 1
+                i += len(SHORT)
+                prev_sig = BRAND[-1]
+                continue
             if s.startswith(OLD, i):
                 out.append(BRAND)
                 changed += 1
@@ -173,6 +185,12 @@ def patch_chunks():
         if OLD not in s:
             continue
         patched, changed = patch_js_source(s)
+        # 标语标题归一：`… — Where You Read, Digest and Get Insight` → 品牌
+        tl = re.compile(r'(?:' + re.escape(BRAND) + r'|' + re.escape(SHORT) + r'|' + OLD + r')\s*[—–-]\s*Where You Read, Digest and Get Insight')
+        n2 = len(tl.findall(patched))
+        if n2:
+            patched = tl.sub(BRAND, patched)
+            changed += n2
         if changed == 0:
             continue
         io.open(p, 'w', encoding='utf-8').write(patched)
@@ -202,10 +220,19 @@ def patch_locales():
             continue
         nd = {}
         for k, v in d.items():
+            nk = k.replace(BRAND, BRAND)  # placeholder no-op keeps structure
             nk = k.replace(OLD, BRAND) if OLD in k else k
-            if nk != k:
+            if SHORT in nk:
+                nk = nk.replace(SHORT, BRAND)
+            nv = v
+            if isinstance(nv, str):
+                if OLD in nv:
+                    nv = nv.replace(OLD, BRAND)
+                if SHORT in nv:
+                    nv = nv.replace(SHORT, BRAND)
+            if nk != k or nv != v:
                 renamed += 1
-            nd[nk] = v
+            nd[nk] = nv
         io.open(p, 'w', encoding='utf-8').write(
             json.dumps(nd, ensure_ascii=False, indent=2))
     print(f'  locale keys renamed: {renamed}')
@@ -219,7 +246,7 @@ def patch_manifest_and_payloads():
             m = json.load(io.open(p, encoding='utf-8'))
             for f in ('name', 'short_name', 'description'):
                 if f in m and isinstance(m[f], str):
-                    m[f] = m[f].replace(OLD, BRAND)
+                    m[f] = m[f].replace(OLD, BRAND).replace(SHORT, BRAND)
             io.open(p, 'w', encoding='utf-8').write(
                 json.dumps(m, ensure_ascii=False, indent=2))
             print('  manifest.json patched')
@@ -234,8 +261,10 @@ def patch_manifest_and_payloads():
                 continue
             if name.endswith('.html') or name.endswith('.txt'):
                 s = io.open(fp, encoding='utf-8', errors='ignore').read()
-                if OLD in s:
-                    io.open(fp, 'w', encoding='utf-8').write(s.replace(OLD, BRAND))
+                if OLD in s or SHORT in s or 'Where You Read, Digest and Get Insight' in s:
+                    s = s.replace(OLD, BRAND).replace(SHORT, BRAND)
+                    s = re.sub(r'(?:' + re.escape(BRAND) + r'|' + re.escape(SHORT) + r'|Readest)\s*[—–-]\s*Where You Read, Digest and Get Insight', BRAND, s)
+                    io.open(fp, 'w', encoding='utf-8').write(s)
                     print(f'  payload patched: {name}')
 
 
