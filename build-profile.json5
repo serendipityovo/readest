@@ -1,30 +1,20 @@
 {
+  // 公开仓库版本：签名配置置空。签名材料（.p12 / .cer / .p7b）与密码不入库，
+  // 本机构建时在 DevEco「项目结构 → 签名配置」里配置 release，由 IDE 写入本机加密串；
+  // 提交前把本文件还原成这一版（字段结构见 build-profile.signing.example.json5）。
   "app": {
     "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "certpath": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001B5BE87D67E6679C43807BFB1E1F08A773CF3F517AFB05E88ED918B57006ED2B2CC8CDE569C228DE",
-          "profile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p7b",
-          "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
-          "storePassword": "0000001B30ECE972546AF77E64740E4FFC2E1E11B465CECB12584E2AE18456E1F3C1CFE28A6609C5BA2844"
-        }
-      },
       {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001B4D41B609EF2B36434CE7BA7A9F2E208FD1CD989A3D9870D9B2885C08DE8242DB0C8C70BBECDB4D",
-          "profile": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p7b",
+          "certpath": "",
+          "keyAlias": "",
+          "keyPassword": "",
+          "profile": "",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
-          "storePassword": "0000001B5912F6E143FA8BF0C7C95B06A7414E9B772477F127E6E1F452F96CDAB1E3D6BCE1C42516D0AA9E"
+          "storeFile": "",
+          "storePassword": ""
         }
       }
     ],

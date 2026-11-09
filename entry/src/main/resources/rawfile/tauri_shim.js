@@ -26,6 +26,65 @@
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }
 
+  // ---- 华为账号一键登录按钮（登录页，审核建议项）----
+  // /auth 路由下向登录面板追加「使用华为账号登录」按钮：点击经桥接拉起
+  // Login Kit 系统授权弹窗（plugin:huawei-account|login），成功显示设备
+  // 级身份。MutationObserver 等 React 渲染完成后插入，插入一次即断开。
+  try {
+    if (location.pathname.indexOf('/auth') === 0 &&
+        typeof MutationObserver !== 'undefined') {
+      var __hwDone = false;
+      var __hwObserver = new MutationObserver(function () {
+        if (__hwDone) return;
+        var buttons = Array.prototype.filter.call(
+          document.querySelectorAll('button'),
+          function (b) { return b.textContent && b.textContent.indexOf('Discord') !== -1; });
+        var ref = buttons[buttons.length - 1];
+        if (!ref) return;
+        __hwDone = true;
+        __hwObserver.disconnect();
+        var btn = ref.cloneNode(true);
+        btn.id = 'hwid-login-btn';
+        var span = btn.querySelector('span.line-clamp-1');
+        if (!span) span = btn.querySelector('span');
+        var setText = function (t) { if (span) span.textContent = t; };
+        var iconEl = btn.querySelector('svg');
+        if (iconEl) {
+          var badge = document.createElement('span');
+          badge.style.cssText = 'width:20px;height:20px;display:inline-flex;align-items:center;' +
+            'justify-content:center;background:#CE0E2D;color:#fff;border-radius:4px;' +
+            'font-size:12px;font-weight:bold;flex-shrink:0;';
+          badge.textContent = '华';
+          iconEl.replaceWith(badge);
+        }
+        setText('使用华为账号登录');
+        btn.addEventListener('click', function () {
+          setText('正在拉起华为账号…');
+          var p = window.__TAURI_INTERNALS__.invoke('plugin:huawei-account|login', {});
+          p.then(function (res) {
+            if (res && res.success) {
+              setText('已连接：' + String(res.openID || '').slice(0, 10) + '…');
+              btn.disabled = true;
+              try { localStorage.setItem('hwid_openid', res.openID || ''); } catch (e2) {}
+              try { window.dispatchEvent(new CustomEvent('hwid-login-success')); } catch (e2) {}
+            } else if (res && res.cancelled) {
+              setText('使用华为账号登录');
+            } else {
+              setText('使用华为账号登录');
+              alert('华为账号登录失败：' + ((res && res.error) || '未知错误'));
+            }
+          }).catch(function (e3) {
+            setText('使用华为账号登录');
+            alert('华为账号登录失败：' + ((e3 && e3.message) || e3));
+          });
+        });
+        ref.parentNode.insertBefore(btn, ref.nextSibling);
+      });
+      __hwObserver.observe(document.documentElement, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', function () { __hwObserver.takeRecords(); });
+    }
+  } catch (e) { /* never block the page */ }
+
   // Upstream "self-hosted distribution" posture: this build ships without the
   // vendor's cloud/payment backend, so unlock the features the paywall gates
   // (isSelfHosted() in src/utils/access.ts reads this window key) — otherwise

@@ -36,12 +36,11 @@ KEYWORDS = {'return', 'case', 'typeof', 'new', 'delete', 'void', 'throw',
             'in', 'of', 'do', 'else', 'await', 'yield', 'instanceof'}
 
 
-def _after_keyword(out) -> bool:
-    # scan back over the emitted text for [a-zA-Z]+ boundary == keyword
-    # (only invoked when prev significant char is a letter, so cost is bounded)
-    buf = ''.join(out)[-12:]
+def _after_keyword(tail: str) -> bool:
+    # scan back over the rolling 16-char tail for [a-zA-Z]+ boundary == keyword
+    # (O(1): the naive ''.join(out) per char was O(N^2) and hung on 500KB chunks)
     word = ''
-    for ch in reversed(buf):
+    for ch in reversed(tail):
         if ch.isalpha():
             word = ch + word
         else:
@@ -51,10 +50,16 @@ def _after_keyword(out) -> bool:
 
 def patch_js_source(s: str):
     out = []
+    tail = ''  # rolling last-16 emitted chars (O(1) keyword lookback)
     changed = 0
     i, n = 0, len(s)
     stack = []  # ['q', char] | ['tpl', brace_depth]
     prev_sig = ''  # last significant (non-space) char emitted, for opener heuristic
+
+    def emit(piece: str) -> None:
+        nonlocal tail
+        out.append(piece)
+        tail = (tail + piece)[-16:]
 
     def replaceable() -> bool:
         if not stack:
@@ -86,67 +91,67 @@ def patch_js_source(s: str):
         c = s[i]
         if replaceable():
             if s.startswith(BRAND, i):
-                out.append(BRAND)
+                emit(BRAND)
                 i += len(BRAND)
                 prev_sig = BRAND[-1]
                 continue
             if s.startswith(SHORT, i):
-                out.append(BRAND)  # 历史短名归一化（阅易→阅易阅读器）
+                emit(BRAND)  # 历史短名归一化（阅易→阅易阅读器）
                 changed += 1
                 i += len(SHORT)
                 prev_sig = BRAND[-1]
                 continue
             if s.startswith(OLD, i):
-                out.append(BRAND)
+                emit(BRAND)
                 changed += 1
                 i += len(OLD)
                 prev_sig = BRAND[-1]
                 continue
             if c == '\\':
-                out.append(s[i:i + 2])
+                emit(s[i:i + 2])
                 i += 2
                 continue
             top = stack[-1]
             if top[0] == 'q':
                 if c == top[1]:
                     stack.pop()
-                out.append(c)
+                emit(c)
                 prev_sig = c
                 i += 1
                 continue
             # template text at depth 0
             if c == '`':
                 stack.pop()
-                out.append(c)
+                emit(c)
                 prev_sig = c
                 i += 1
                 continue
             if c == '$' and i + 1 < n and s[i + 1] == '{':
                 top[1] = 1
-                out.append('${')
+                emit('${')
                 i += 2
                 continue
-            out.append(c)
+            emit(c)
             prev_sig = c
             i += 1
             continue
         # code region
-        kw = prev_sig.isalpha() and _after_keyword(out)
+        kw = prev_sig.isalpha() and _after_keyword(tail)
         if c in ('"', "'") and (prev_sig == '' or prev_sig in OPENERS or kw):
             vend = quoted_ident_verbatim(i)
             if vend is not None:
-                out.append(s[i:vend + 1])
+                emit(s[i:vend + 1])
                 prev_sig = s[vend]
                 i = vend + 1
                 continue
             stack.append(['q', c])
-            out.append(c)
+            emit(c)
             prev_sig = c
             i += 1
             continue
         if c == '`' and (prev_sig == '' or prev_sig in OPENERS or kw):
             stack.append(['tpl', 0])
-            out.append(c)
+            emit(c)
             prev_sig = c
             i += 1
             continue
@@ -157,16 +162,16 @@ def patch_js_source(s: str):
                     top[1] += 1
                 elif c == '}':
                     top[1] -= 1
-                out.append(c)
+                emit(c)
                 prev_sig = c
                 i += 1
                 continue
             # unmatched (should not happen at depth 0 in code region)
-            out.append(c)
+            emit(c)
             prev_sig = c
             i += 1
             continue
-        out.append(c)
+        emit(c)
         if not c.isspace():
             prev_sig = c
         i += 1
@@ -218,18 +223,20 @@ def patch_locales():
         except Exception as e:
             print(f'  SKIP {lang}: {e}')
             continue
+        tl = re.compile(r'(?:' + re.escape(BRAND) + r'|' + re.escape(SHORT) + r'|' + re.escape(OLD) + r')\s*[—–-]\s*Where You Read, Digest and Get Insight')
+        norm = re.compile(r'阅易(?!阅读器)')
+        norm_legacy = re.compile(r'Readest')
+
+        def fix_text(t: str) -> str:
+            t = tl.sub(BRAND, t)
+            t = norm.sub(BRAND, t)          # 短名归一（环视防膨胀）
+            t = norm_legacy.sub(BRAND, t)   # 上游原名归一
+            return t
+
         nd = {}
         for k, v in d.items():
-            nk = k.replace(BRAND, BRAND)  # placeholder no-op keeps structure
-            nk = k.replace(OLD, BRAND) if OLD in k else k
-            if SHORT in nk:
-                nk = nk.replace(SHORT, BRAND)
-            nv = v
-            if isinstance(nv, str):
-                if OLD in nv:
-                    nv = nv.replace(OLD, BRAND)
-                if SHORT in nv:
-                    nv = nv.replace(SHORT, BRAND)
+            nk = fix_text(k)
+            nv = fix_text(v) if isinstance(v, str) else v
             if nk != k or nv != v:
                 renamed += 1
             nd[nk] = nv
@@ -244,28 +251,29 @@ def patch_manifest_and_payloads():
     if os.path.isfile(p):
         try:
             m = json.load(io.open(p, encoding='utf-8'))
+            normm = re.compile(r'阅易(?!阅读器)')
             for f in ('name', 'short_name', 'description'):
                 if f in m and isinstance(m[f], str):
-                    m[f] = m[f].replace(OLD, BRAND).replace(SHORT, BRAND)
+                    m[f] = normm.sub(BRAND, m[f].replace(OLD, BRAND))
             io.open(p, 'w', encoding='utf-8').write(
                 json.dumps(m, ensure_ascii=False, indent=2))
             print('  manifest.json patched')
         except Exception as e:
             print(f'  manifest SKIP: {e}')
-    # html + RSC txt payloads: plain case-sensitive replace
-    for sub in ('',):
-        base = FRONTEND
-        for name in sorted(os.listdir(base)):
-            fp = os.path.join(base, name)
-            if not os.path.isfile(fp):
+    # html + RSC txt payloads: recursive walk, tagline + NORM normalize
+    tl = re.compile(r'(?:' + re.escape(BRAND) + r'|' + re.escape(SHORT) + r'|' + re.escape(OLD) + r')\s*[—–-]\s*Where You Read, Digest and Get Insight')
+    norm = re.compile(r'阅易(?!阅读器)')
+    for root, dirs, files in os.walk(FRONTEND):
+        for name in files:
+            if not (name.endswith('.html') or name.endswith('.txt')):
                 continue
-            if name.endswith('.html') or name.endswith('.txt'):
-                s = io.open(fp, encoding='utf-8', errors='ignore').read()
-                if OLD in s or SHORT in s or 'Where You Read, Digest and Get Insight' in s:
-                    s = s.replace(OLD, BRAND).replace(SHORT, BRAND)
-                    s = re.sub(r'(?:' + re.escape(BRAND) + r'|' + re.escape(SHORT) + r'|Readest)\s*[—–-]\s*Where You Read, Digest and Get Insight', BRAND, s)
-                    io.open(fp, 'w', encoding='utf-8').write(s)
-                    print(f'  payload patched: {name}')
+            fp = os.path.join(root, name)
+            s = io.open(fp, encoding='utf-8', errors='ignore').read()
+            s2 = tl.sub(BRAND, s)
+            s2 = norm.sub(BRAND, s2)
+            if s2 != s:
+                io.open(fp, 'w', encoding='utf-8').write(s2)
+                print(f'  payload patched: {os.path.relpath(fp, FRONTEND)}')
 
 
 def main():

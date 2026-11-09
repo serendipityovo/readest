@@ -1,6 +1,7 @@
 import { window } from '@kit.ArkUI';
 import { font } from '@kit.ArkUI';
 import { common, Want, abilityAccessCtrl } from '@kit.AbilityKit';
+import { authentication } from '@kit.AccountKit';
 import { asset } from '@kit.AssetStoreKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
@@ -106,6 +107,16 @@ interface TtsInitResult { success: boolean }
 interface TtsSpeakResult { utteranceId: string }
 interface TtsVoicesResult { voices: Array<Record<string, Object>> }
 interface FontsListResult { fonts: Record<string, string> }
+// 华为账号一键登录（审核建议项：登录页提供华为账号登录选项）
+interface HuaweiAccountResult {
+  success: boolean;
+  cancelled?: boolean;
+  openID?: string;
+  unionID?: string;
+  authorizationCode?: string;
+  idToken?: string;
+  error?: string;
+}
 interface SuccessResult { success: boolean }
 interface PositionResult { position: number }
 interface TtsEventPayload { utteranceId: string; code: string; message: string; mark: string | null }
@@ -1447,6 +1458,54 @@ export class NativeBridge {
           pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
         await pasteboard.getSystemPasteboard().setData(data);
         return null;
+      }
+
+      // ---- 华为账号一键登录（Login Kit；审核建议项：登录页提供华为账号登录）----
+      // 真实系统能力接入：拉起华为账号授权（系统弹窗），成功返回 openID/
+      // unionID/authorizationCode。scope 仅 openid——云同步仍走 readest
+      // 账号体系（可选），本命令提供设备级身份快捷验证
+      case 'plugin:huawei-account|login': {
+        try {
+          if (!this.context) {
+            const noCtx: HuaweiAccountResult = { success: false, error: 'context not ready' };
+            return noCtx;
+          }
+          const provider = new authentication.HuaweiIDProvider();
+          // LoginWithHuaweiIDRequest 无 scopes 字段（一键登录仅返回
+          // openID/unionID/authorizationCode，SDK 实证），forceLogin 默认
+          // true=未登录时拉起华为账号登录页
+          const request: authentication.LoginWithHuaweiIDRequest =
+            provider.createLoginWithHuaweiIDRequest();
+          const controller = new authentication.AuthenticationController(this.context);
+          const response: authentication.LoginWithHuaweiIDResponse =
+            await controller.executeRequest(request);
+          const cred = response?.data;
+          if (!cred) {
+            const cancelled: HuaweiAccountResult = { success: false, cancelled: true };
+            return cancelled;
+          }
+          hilog.info(0x0107, 'readestD9', 'huawei login ok openid=%{public}s',
+            String(cred.openID ?? '').slice(0, 12));
+          const result: HuaweiAccountResult = {
+            success: true,
+            openID: cred.openID,
+            unionID: cred.unionID ?? '',
+            authorizationCode: cred.authorizationCode ?? '',
+            idToken: cred.idToken ?? ''
+          };
+          return result;
+        } catch (e) {
+          const be: BusinessError = e as BusinessError;
+          const code: number = Number(be.code ?? -1);
+          const result: HuaweiAccountResult = {
+            success: false,
+            cancelled: code === 1000500001, // 用户取消授权
+            error: `code=${code} ${String(be.message ?? '').slice(0, 80)}`
+          };
+          hilog.warn(0x0107, 'readestD9', 'huawei login fail: %{public}s',
+            result.error ?? '');
+          return result;
+        }
       }
 
       // ---- plugin:websocket（@ohos.net.websocket；契约：@tauri-apps/plugin-websocket dist-js）----
