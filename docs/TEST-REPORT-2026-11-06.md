@@ -341,3 +341,24 @@ fs|open resolve ok=true (rid=1,2,3,4,5…)                                      
 1. 热启动"打开方式"（应用开着时右键另一本书）走同一推送通道，可选快速复核；
 2. AGC 按新包名 com.yueyi.app 重建应用记录 + 重签发布 Profile（上架前必做，PUBLISH.md 清单）；
 3. SelfTest 64 用例含 favicon.png 新 URL 的复跑（预期全绿）。
+
+---
+
+## 10. 真机验证闭环（2026-11-10 · com.yueyi.app / 1000006 · 调试签名装机）
+
+### 10.1 验证结果
+
+| 项 | 结果 |
+|---|---|
+| **SelfTest 64** | 60 OK + 3 SKIP + 1 THROW（KI-7 Clash TLS 环境项）；**#12 字体=真实系统枚举**（楷体-简/书宋-简/方正魏碑…）→ **D-3 真机实证**；#63 URL 无 404 → R2 修复生效 |
+| **V-16/V-17 文件关联** | 全链真机打通：授权请求（READ_WRITE_DOCUMENTS_DIRECTORY，用户允许）→ **raw→app 路径翻译**（`/storage/Users/currentUser/Documents/`）→ 沙箱副本 → OPEN_WITH_FILES（file:// 前缀修正）→ ingest → 打开。冷启动全链 hilog 实证 |
+| **V-16 根因改写** | 原判"URI 形态"错误——真因=公共 Documents 目录对无授权应用**挂载不可见**（ENOENT 而非 EPERM）。探针实证：授权前 `/storage/media/100/...` 全 ENOENT；授权后应用可见根=`/storage/Users/currentUser/Documents`（6 items 与 raw Docs/Documents 内容一致） |
+| **TXT 打开（审核主诉）** | want 链真机全通：GBK 正确解码（王国维《人间词话》繁体正文渲染），**窗口标题「阅易 — gbk_sample」**，阅读页正常 |
+| **D-2 分屏** | 「并排阅读」入口存在于书籍菜单（单书态禁用=上游一致）→ 申报即可 |
+| **D-1 AI 伴读** | 设备 UI 无入口（未登录态上游不渲染）→ 按审核"设计意图说明"通道申报，无需隐藏 |
+| **标签一致性** | 设备标签=阅易阅读器；窗口标题品牌替换链正常（阅易 — 书名） |
+
+### 10.2 遗留
+
+- 付费墙/Premium 入口移除、品牌清洗等 v1.0.2 全部修复已随 1000002-1000006 系列在真机验证
+- 备案维持项不变（V-10/11/12/15）

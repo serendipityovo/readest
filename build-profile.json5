@@ -7,24 +7,24 @@
         "material": {
           "certpath": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B36A47ED316C6B5CC95E5A360DC541CB580389801952E790C38C535454A2988F791BC425238F522",
+          "keyPassword": "0000001B5BE87D67E6679C43807BFB1E1F08A773CF3F517AFB05E88ED918B57006ED2B2CC8CDE569C228DE",
           "profile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\default_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
-          "storePassword": "0000001B01C420311C39ACF6D710FFDF9DAED3ABF93297942A75460DAB3F604A4F07818615999300550256"
+          "storePassword": "0000001B30ECE972546AF77E64740E4FFC2E1E11B465CECB12584E2AE18456E1F3C1CFE28A6609C5BA2844"
         }
       },
       {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "D:/Projects/ReadestOhos/signing/release.p12",
-          "storePassword": "0000001C74341DBE82ABC64153FB16120526F58104E35E827E0DEC4E99FCEE4D77A606EAB0852EEC07468E20",
-          "keyAlias": "readest-release",
-          "keyPassword": "0000001CB8A27AA7B69C08D8CF9A982093CBC365EB791B58CC07C14540F329F52BE2EDFCDE86BBE96DD71EFD",
+          "certpath": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B4D41B609EF2B36434CE7BA7A9F2E208FD1CD989A3D9870D9B2885C08DE8242DB0C8C70BBECDB4D",
+          "profile": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p7b",
           "signAlg": "SHA256withECDSA",
-          "profile": "D:/Projects/ReadestOhos/signing/release.p7b",
-          "certpath": "D:/Projects/ReadestOhos/signing/release.cer"
+          "storeFile": "C:\\Users\\夏茂钦\\.ohos\\config\\release_ReadestOhos_sMSuJj76mDDjftWaP3DRR02xAg2OCnz-CQpNwRAUbTc=.p12",
+          "storePassword": "0000001B5912F6E143FA8BF0C7C95B06A7414E9B772477F127E6E1F452F96CDAB1E3D6BCE1C42516D0AA9E"
         }
       }
     ],

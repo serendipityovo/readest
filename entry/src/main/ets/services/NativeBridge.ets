@@ -375,7 +375,36 @@ export class NativeBridge {
     } catch (e) {
       hilog.warn(0x0107, 'readestD9', 'retryLastWant failed: %{public}s',
         JSON.stringify(e).slice(0, 100));
+      this.probeVisiblePaths(uri);
       return false;
+    }
+  }
+
+  /**
+   * 诊断（2026-11-10）：文档目录授权后裸路径仍 ENOENT——枚举应用沙箱视角
+   * 下候选根目录的真实可见性，确定授权后可用的路径形态（纯日志，无副作用）
+   */
+  private probeVisiblePaths(wantUri: string): void {
+    const stripped: string = wantUri.startsWith('file://') ? wantUri.slice('file://'.length) : wantUri;
+    const candidates: string[] = [
+      '/storage/media/100/local/files/Docs',
+      '/storage/media/100/local/files',
+      '/storage/Users/currentUser/Documents',
+      '/storage/Users/currentUser/Docs',
+      '/storage/Users/currentUser',
+      '/storage',
+      stripped.substring(0, stripped.lastIndexOf('/'))
+    ];
+    for (const c of candidates) {
+      try {
+        const items: Array<string> = fs.listFileSync(c);
+        hilog.info(0x0107, 'readestD9', 'probe %{public}s => %{public}d items [%{public}s]',
+          c, items.length, items.slice(0, 6).join(',').slice(0, 110));
+      } catch (err) {
+        const be: BusinessError = err as BusinessError;
+        hilog.warn(0x0107, 'readestD9', 'probe %{public}s => FAIL code=%{public}d %{public}s',
+          c, Number(be.code ?? -1), String(be.message ?? '').slice(0, 60));
+      }
     }
   }
 
@@ -384,14 +413,71 @@ export class NativeBridge {
     return this.unresolvedWantUri !== '';
   }
 
-  /** V-16：want file:// → 沙箱副本路径（两种 URI 形态都试） */
-  private async settleWantUri(uri: string): Promise<string> {
-    try {
-      return await this.importPickedUriToSandbox(uri);
-    } catch (e) {
-      const stripped: string = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
-      return await this.importPickedUriToSandbox(stripped);
+  /**
+   * V-16 路径翻译（2026-11-10 真机探针实证）：READ_WRITE_DOCUMENTS_DIRECTORY
+   * 授权后，应用可见的公共文档目录 = /storage/Users/currentUser/Documents，
+   * 而 want 送达的是 hdc/raw 视角 /storage/media/100/local/files/Docs/…——
+   * 授权不改变挂载映射，必须做路径翻译。已知映射（内容比对实证）：
+   *   raw …/local/files/Docs/Documents/X ⇔ app /storage/Users/currentUser/Documents/X
+   * 兜底：按文件名在应用可见 Documents 根（含一层子目录）查找
+   */
+  private translateRawToAppVisible(rawPath: string): string {
+    const marker: string = '/local/files/';
+    const idx: number = rawPath.indexOf(marker);
+    if (idx < 0) {
+      return '';
     }
+    return `/storage/Users/currentUser/${rawPath.substring(idx + marker.length)}`;
+  }
+
+  /** V-16：want file:// → 沙箱副本路径（多形态 + 翻译 + 按名查找） */
+  private async settleWantUri(uri: string): Promise<string> {
+    const stripped: string = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
+    const decoded: string = decodeURIComponent(stripped);
+    const candidates: string[] = [uri, stripped, decoded];
+    // raw → 应用可见翻译（Documents 授权子树）
+    const translated: string = this.translateRawToAppVisible(decoded);
+    if (translated !== '') {
+      candidates.push(translated);
+    }
+    // 按名查找：应用可见 Documents 根 + 一层子目录
+    try {
+      const name: string = decoded.substring(decoded.lastIndexOf('/') + 1).toLowerCase();
+      const root: string = '/storage/Users/currentUser/Documents';
+      for (const item of fs.listFileSync(root)) {
+        const cand: string = `${root}/${item}`;
+        try {
+          if (item.toLowerCase() === name && !fs.statSync(cand).isDirectory()) {
+            candidates.push(cand);
+          } else if (fs.statSync(cand).isDirectory()) {
+            for (const sub of fs.listFileSync(cand)) {
+              if (sub.toLowerCase() === name) {
+                candidates.push(`${cand}/${sub}`);
+              }
+            }
+          }
+        } catch (e) {
+          // 条目不可 stat 时跳过
+        }
+      }
+    } catch (e) {
+      hilog.warn(0x0107, 'readestD9', 'findByName probe failed: %{public}s',
+        JSON.stringify(e).slice(0, 80));
+    }
+    let lastErr: Error | null = null;
+    for (const form of candidates) {
+      try {
+        const dst: string = await this.importPickedUriToSandbox(form);
+        hilog.info(0x0107, 'readestD9', 'want copy OK via form %{public}s', form.slice(0, 70));
+        return dst;
+      } catch (e) {
+        lastErr = e as Error;
+        const be: BusinessError = e as BusinessError;
+        hilog.warn(0x0107, 'readestD9', 'want form %{public}s => code=%{public}d %{public}s',
+          form.slice(0, 70), Number(be.code ?? -1), String(be.message ?? '').slice(0, 50));
+      }
+    }
+    throw lastErr ?? new Error('all want uri forms failed');
   }
 
   /** V-17：无 shared-intent 监听时的主动推送。
