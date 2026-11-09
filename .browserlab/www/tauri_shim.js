@@ -5,9 +5,35 @@
 (function () {
   'use strict';
 
+  // Brand rename (2026-10-27, review feedback 9.5): the frontend sets
+  // document.title dynamically ("Readest — ...") and ArkWeb mirrors it to the
+  // PC window title bar. Intercept every title write and swap the brand so the
+  // window bar never shows the upstream name.
+  try {
+    var titleDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
+    if (titleDesc && titleDesc.set) {
+      Object.defineProperty(document, 'title', {
+        configurable: true,
+        get: function () { return titleDesc.get.call(document); },
+        set: function (v) {
+          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613')); }
+          catch (e) { /* never block the page */ }
+        }
+      });
+    }
+  } catch (e) { /* older engines: fall back to natural behavior */ }
 
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }
+
+  // Upstream "self-hosted distribution" posture: this build ships without the
+  // vendor's cloud/payment backend, so unlock the features the paywall gates
+  // (isSelfHosted() in src/utils/access.ts reads this window key) — otherwise
+  // the Premium upsell points at a backend this fork does not run.
+  try {
+    window.__READEST_RUNTIME_CONFIG =
+      Object.assign({}, window.__READEST_RUNTIME_CONFIG, { selfHosted: true });
+  } catch (e) { /* never block the page */ }
 
   // （审计移除）D12 的 iframe getter 转发块——真机 KI-5 实际由全 shell
   // 加固+缓存绕过（同批部署）治愈；本块反而破坏 Chromium 系 lab 渲染

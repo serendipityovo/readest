@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "阅易阅读器"
+    },
+    {
+      "name": "perm_docs_reason",
+      "value": "Read book files you open with this app from the system Documents folder"
     }
   ]
 }

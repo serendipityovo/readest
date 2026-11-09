@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "阅易阅读器"
+    },
+    {
+      "name": "perm_docs_reason",
+      "value": "读取您通过「打开方式」交给本应用、位于系统文档目录中的书籍文件"
     }
   ]
 }

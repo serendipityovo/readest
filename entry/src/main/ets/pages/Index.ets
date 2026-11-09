@@ -66,6 +66,22 @@ struct Index {
         this.extractLabel = '资源准备异常，仍尝试启动…';
         this.frontendReady = true; // still try: placeholder/404 will show
       });
+    // V-16 补充：冷启动带 want 且文档目录授权缺失时，frontendReady 后补
+    // 一次授权请求并重放 want（避免 onCreate 期弹窗时序问题；仅真实
+    // 「打开方式」场景触发，无 want 的启动不索权）
+    if (nativeBridge.hasUnresolvedWant()) {
+      nativeBridge.ensureDocumentsPermission()
+        .then((granted: boolean): Promise<boolean> => {
+          if (!granted) {
+            return Promise.resolve(false);
+          }
+          return nativeBridge.retryLastWant();
+        })
+        .then((replayed: boolean): void => {
+          hilog.info(0x0107, 'readestD9', 'want replay after grant: %{public}s',
+            String(replayed));
+        });
+    }
   }
 
   build() {

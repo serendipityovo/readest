@@ -1,0 +1,70 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<script src="/tauri_shim.js?v=evt1"></script>
+<script src="/mock_bridge.js?v=pick1"></script>
+</head><body><div id="out">TXT-PROBE-PENDING</div>
+<script>
+// TXT open-chain probe (2026-11-09, review finding: TXT 导入成功但无法打开).
+// Seeds a GBK txt book straight into the mock library and jumps to the reader
+// route — the TXT→EPUB conversion worker runs in the real browser here, so a
+// bundle-level regression (rebrand patches) reproduces identically.
+(function () {
+  var out = document.getElementById('out');
+  function show(s) { out.textContent = s; }
+  fetch('/corpus/gbk_sample.txt')
+    .then(function (res) { return res.arrayBuffer(); })
+    .then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var binary = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      var b64 = btoa(binary);
+      var HASH = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+      var files = {};
+      files['/lab/files/Readest/Books/' + HASH + '/gbk_sample.txt'] = { __b64: b64 };
+      // keep settings.json from earlier sessions, force zh-CN (same as EPUB probe)
+      try {
+        var prev = JSON.parse(localStorage.getItem('labfs_files') || '{}');
+        if (prev && prev['/lab/files/settings.json']) {
+          var sj = prev['/lab/files/settings.json'];
+          var s = typeof sj === 'string' ? sj : (sj.text || '');
+          if (s) {
+            var settings = JSON.parse(s);
+            settings.language = 'zh-CN';
+            if (settings.globalViewSettings &&
+                typeof settings.globalViewSettings === 'object') {
+              settings.globalViewSettings.uiLanguage = 'zh-CN';
+            } else {
+              settings.globalViewSettings = { uiLanguage: 'zh-CN' };
+            }
+            files['/lab/files/settings.json'] = JSON.stringify(settings);
+          }
+        }
+      } catch (e) { /* fresh profile */ }
+      var library = [{
+        hash: HASH,
+        format: 'TXT',
+        title: 'gbk_sample',
+        sourceTitle: 'gbk_sample.txt',
+        author: '',
+        filePath: '/lab/files/Readest/Books/' + HASH + '/gbk_sample.txt',
+        createdAt: Date.now() - 3600000,
+        updatedAt: Date.now() - 1800000,
+        deletedAt: null,
+        coverImageUrl: null
+      }];
+      files['/lab/files/Readest/Books/library.json'] = JSON.stringify(library);
+      localStorage.setItem('labfs_files', JSON.stringify(files));
+      localStorage.setItem('i18nextLng', 'zh-CN');
+      localStorage.setItem('labfs_dirs', JSON.stringify([
+        '/lab/downloads', '/lab/files', '/lab/files/Readest',
+        '/lab/files/Readest/Books', '/lab/files/Readest/Books/' + HASH
+      ]));
+      localStorage.setItem('labdb_files__Readest__Books__' + HASH + '__search.db',
+        JSON.stringify({ tables: {}, userVersion: 1, seq: {} }));
+      show('TXT-PROBE-SEEDED');
+      location.href = '/reader?ids=' + HASH;
+    })
+    .catch(function (e) { show('TXT-PROBE-FAIL :: ' + e); });
+}());
+</script></body></html>

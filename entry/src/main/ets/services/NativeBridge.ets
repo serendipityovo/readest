@@ -1,6 +1,6 @@
 import { window } from '@kit.ArkUI';
 import { font } from '@kit.ArkUI';
-import { common, Want } from '@kit.AbilityKit';
+import { common, Want, abilityAccessCtrl } from '@kit.AbilityKit';
 import { asset } from '@kit.AssetStoreKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
@@ -142,6 +142,12 @@ export class NativeBridge {
   private wantSettleDone: boolean = true;
   private lastIntentKey: string = '';
   private lastIntentAt: number = 0;
+  // V-16 补充（真机 2026-11-10 实证）：want 送达的文件位于公共 Documents
+  // 目录——应用无授权时该目录在沙箱挂载中不可见（openSync 报 13900002
+  // ENOENT 而非 EPERM）。失败的 want 存档于 unresolvedWant*；授权成功后
+  // 由 Index（frontendReady 后）触发 retryLastWant 重跑完整链路
+  private unresolvedWantUri: string = '';
+  private unresolvedWantAction: string = '';
   // KI-5 诊断：reqId -> cmd（resolve 打点用）
   private reqCmds: Map<number, string> = new Map();
   // plugin:deep-link|get_current：冷启动 URL 整个会话重复返回（dist-js 契约
@@ -281,7 +287,7 @@ export class NativeBridge {
           this.pushOpenWithFiles([finalUrl]);
         }
       })
-      .catch((e: Error): void => {
+      .catch(async (e: Error): Promise<void> => {
         // 拷贝失败退回旧行为（原始 uri 直投——大概率被沙箱拒绝并优雅报错）。
         // 注意 BusinessError/TypeError 的 JSON.stringify 是 "{}"——必须打
         // code/message 才能定位（00:40 真机案例：context 未注入的 TypeError
@@ -290,16 +296,92 @@ export class NativeBridge {
         hilog.warn(0x0107, 'readestD9',
           'want sandbox copy failed: code=%{public}d msg=%{public}s name=%{public}s',
           Number(be.code ?? -1), String(be.message ?? e).slice(0, 100), String(e.name ?? e).slice(0, 40));
-        this.deepLinkLaunchUrls = [uri];
-        const payload: SharedIntentPayload = { urls: [uri], action: action };
-        const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
-        if (listeners !== undefined && listeners.length > 0) {
-          this.emitChannel('native-bridge', 'shared-intent', payload);
+        // 2026-11-10 真机定性：ENOENT(13900002) = 公共 Documents 目录对
+        // 无授权应用不可见 → 请求 2in1 文档目录授权，成功则原地重试完整链路；
+        // 冷启动窗口未就绪时请求会失败——失败则存档，由 Index 在
+        // frontendReady 后触发 retryLastWant（避免"启动即索权"审计风险：
+        // 仅在用户真实使用了「打开方式」后才弹授权）
+        this.unresolvedWantUri = uri;
+        this.unresolvedWantAction = action;
+        const granted: boolean = await this.ensureDocumentsPermission();
+        if (granted) {
+          hilog.info(0x0107, 'readestD9', 'documents permission granted, retrying want');
+          const retryUri: string = await this.settleWantUri(uri);
+          this.unresolvedWantUri = '';
+          const finalUrl: string = retryUri.startsWith('file://') ? retryUri : `file://${retryUri}`;
+          this.deepLinkLaunchUrls = [finalUrl];
+          const rp: SharedIntentPayload = { urls: [finalUrl], action: action };
+          const ls: number[] | undefined = this.channels.get('native-bridge|shared-intent');
+          if (ls !== undefined && ls.length > 0) {
+            this.emitChannel('native-bridge', 'shared-intent', rp);
+          } else {
+            this.pendingIntent = rp;
+            this.pushOpenWithFiles([finalUrl]);
+          }
         } else {
-          this.pendingIntent = payload;
+          this.deepLinkLaunchUrls = [uri];
+          const payload: SharedIntentPayload = { urls: [uri], action: action };
+          const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
+          if (listeners !== undefined && listeners.length > 0) {
+            this.emitChannel('native-bridge', 'shared-intent', payload);
+          } else {
+            this.pendingIntent = payload;
+          }
         }
       });
     this.wantSettleDone = false;
+  }
+
+  /** V-16 补充：请求 2in1 文档目录读写授权（用户授权类，仅真实使用场景弹窗） */
+  async ensureDocumentsPermission(): Promise<boolean> {
+    try {
+      const atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
+      const res = await atManager.requestPermissionsFromUser(
+        this.context!, ['ohos.permission.READ_WRITE_DOCUMENTS_DIRECTORY']);
+      const granted: boolean = res.authResults.length > 0 && res.authResults[0] === 0;
+      hilog.info(0x0107, 'readestD9', 'documents permission request => %{public}s',
+        String(granted));
+      return granted;
+    } catch (e) {
+      // 冷启动窗口未就绪时请求抛错——由 Index 在 frontendReady 后重试
+      hilog.warn(0x0107, 'readestD9', 'documents permission request threw: %{public}s',
+        JSON.stringify(e).slice(0, 100));
+      return false;
+    }
+  }
+
+  /** V-16 补充：授权成功后重放上次失败的 want（Index frontendReady 后调用） */
+  async retryLastWant(): Promise<boolean> {
+    const uri: string = this.unresolvedWantUri;
+    if (uri === '') {
+      return false;
+    }
+    this.unresolvedWantUri = '';
+    try {
+      const finalUri: string = await this.settleWantUri(uri);
+      const finalUrl: string = finalUri.startsWith('file://') ? finalUri : `file://${finalUri}`;
+      this.deepLinkLaunchUrls = [finalUrl];
+      const payload: SharedIntentPayload = {
+        urls: [finalUrl], action: this.unresolvedWantAction
+      };
+      const listeners: number[] | undefined = this.channels.get('native-bridge|shared-intent');
+      if (listeners !== undefined && listeners.length > 0) {
+        this.emitChannel('native-bridge', 'shared-intent', payload);
+      } else {
+        this.pendingIntent = payload;
+        this.pushOpenWithFiles([finalUrl]);
+      }
+      return true;
+    } catch (e) {
+      hilog.warn(0x0107, 'readestD9', 'retryLastWant failed: %{public}s',
+        JSON.stringify(e).slice(0, 100));
+      return false;
+    }
+  }
+
+  /** Index 查询：是否存在待授权重试的 want */
+  hasUnresolvedWant(): boolean {
+    return this.unresolvedWantUri !== '';
   }
 
   /** V-16：want file:// → 沙箱副本路径（两种 URI 形态都试） */
