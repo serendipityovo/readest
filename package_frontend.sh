@@ -93,6 +93,67 @@ HIT2=$(grep -l '(0,a.jsx)(eD,{availablePlans:ea,' "$RAW_DIR"/_next/static/chunks
 echo "[6b/7] brand engine (阅易阅读器, string-context patcher + node --check gated)..."
 python scripts/brand_rename.py
 
+# [6b2] 值位置残留收尾（brand_rename 的单词标识符 guard 会放过它们）：
+# ① title:"Readest" —— Tauri 窗口标题字面量（本移植单窗口，路径死代码，
+#   但 census 干净度要求替换）；② 设置页昵称占位符三元 else 分支；
+# ③ 导出面板 title:s("Readest") —— locales 无此键，i18n 回退显示键名
+#   （同面板相邻行已是 s("阅易阅读器 …") 模式，回退即文案）。
+# ⚠ 不动：fs 路径段 join(e,"Images","Readest")（改了孤立既有用户数据）、
+#   deviceModel 默认值、["ReadestVo*] 等程序化键访问（替换破坏绑定）。
+for CB in "$RAW_DIR"/_next/static/chunks/*.js; do
+  sed -i 's/title:"Readest"/title:"阅易阅读器"/g; s/:"Readest",className:"input/:\"阅易阅读器\",className:"input/g; s/title:s("Readest")/title:s("阅易阅读器")/g' "$CB"
+done
+echo "[6b2] value-position brand leftovers: $(grep -rho 'title:"Readest"\|:"Readest",className\|title:s("Readest")' "$RAW_DIR"/_next/static/chunks/*.js 2>/dev/null | wc -l) remaining"
+
+# [6d] 开书失败 toast 自解释（审核问题1 诊断增强）：两处 "Unable to open book"
+# toast 追加真实错误串——真机/审核现场直接看到根因（file not found / bad
+# handle / decode fail…），不再是无信息量的泛化提示。内容匹配防 chunk 改名。
+N1=$(grep -l 'Failed to open book in reader' "$RAW_DIR"/_next/static/chunks/*.js | head -1)
+[ -n "$N1" ] && sed -i 's/\([a-zA-Z]\)("Unable to open book"),type:"error"/\1("Unable to open book")+" :: "+String(e\&\&e.message||e).slice(0,150),type:"error"/g' "$N1" && echo "[6d] toast-diag site1: $(grep -c 'Unable to open book.*:: ' "$N1")"
+N2=$(grep -l 'Error initializing book' "$RAW_DIR"/_next/static/chunks/*.js | head -1)
+[ -n "$N2" ] && sed -i 's/\([a-zA-Z]\)("Unable to open book"),callback:/\1("Unable to open book")+" :: "+String(t\&\&t.message||t).slice(0,150),callback:/g' "$N2" && echo "[6d] toast-diag site2: $(grep -c 'Unable to open book.*:: ' "$N2")"
+
+# [6e] 内置 OPDS 热门目录换成大陆直连可达源（审核问题2：standardebooks 401 /
+# manybooks 403 / m.gutenberg 301 链路在审核环境报「无法加载页面」）。
+# 实测（2026-11-11 沈阳直连）：www.gutenberg.org 200 / unglue.it 200。
+# 移除两个失败源 + gutenberg 换 www 域名（301 跟随不可依赖，直达 200）。
+python - <<'OPDSE'
+import glob, io
+RAW = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/_next/static/chunks"
+fixed_url = fixed_list = 0
+for p in glob.glob(RAW + "/*.js"):
+    s = io.open(p, encoding="utf-8").read()
+    s2 = s.replace("https://m.gutenberg.org/ebooks.opds/", "https://www.gutenberg.org/ebooks.opds/")
+    if s2 != s: fixed_url += 1
+    drop1 = '{id:"standardebooks",name:"Standard Ebooks",url:"https://standardebooks.org/feeds/opds",description:"Free and liberated ebooks, carefully produced for the true book lover",icon:"📚"},'
+    drop2 = '{id:"manybooks",name:"ManyBooks",url:"https://manybooks.net/opds/index.php",description:"Over 50,000 free ebooks",icon:"📖"},'
+    if drop1 in s2 or drop2 in s2:
+        s2 = s2.replace(drop1, "").replace(drop2, "")
+        fixed_list += 1
+    if s2 != s:
+        io.open(p, "w", encoding="utf-8").write(s2)
+print(f"[6e] opds catalogs: url-fix in {fixed_url} chunk(s), list-trim in {fixed_list} chunk(s)")
+OPDSE
+
+# [6f] 品牌引擎误伤还原（审核问题2 根因）：brand_rename.py 无差别替换字符串
+# 字面量里的 Readest→阅易阅读器，把程序常量也改了——UA 变中文后
+# new Headers() 抛 "non ISO-8859-1" TypeError，OPDS 浏览全挂（审核现场
+# "无法加载页面"）。还原为 ASCII 形态；迁移路径字面量还原上游原名。
+python - <<'UNBRAND'
+import glob, io
+RAW = r"D:/Projects/ReadestOhos/entry/src/main/resources/rawfile/frontend/_next/static/chunks"
+n_ua = n_img = 0
+for p in glob.glob(RAW + "/*.js"):
+    s = io.open(p, encoding="utf-8").read()
+    s2 = s.replace('"阅易阅读器/1.0 (OPDS Browser)"', '"YueYiReader/1.0 (OPDS Browser)"')
+    if s2 != s: n_ua += 1
+    s3 = s2.replace("Images/阅易阅读器/Images", "Images/Readest/Images")
+    if s3 != s2: n_img += 1
+    if s3 != s:
+        io.open(p, "w", encoding="utf-8").write(s3)
+print(f"[6f] unbrand: UA fixed in {n_ua} chunk(s), Images-path fixed in {n_img} chunk(s)")
+UNBRAND
+
 echo "[6c/7] dead resources + title normalize (阅易阅读器)..."
 rm -rf "$RAW_DIR/.well-known"
 rm -rf "$RAW_DIR/updater"

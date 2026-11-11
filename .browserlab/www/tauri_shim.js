@@ -16,7 +16,7 @@
         configurable: true,
         get: function () { return titleDesc.get.call(document); },
         set: function (v) {
-          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613')); }
+          try { titleDesc.set.call(document, String(v).replace(/readest/gi, '\u9605\u6613\u9605\u8bfb\u5668')); }
           catch (e) { /* never block the page */ }
         }
       });
@@ -25,6 +25,86 @@
 
   try { console.log('[SHIM-LOAD]', (window.top === window ? 'main' : 'sub') + ':' +
     String(location.href).slice(-40)); } catch (e) { /* probe only */ }
+
+  // ---- 华为账号一键登录按钮（登录页，审核建议项）----
+  // /auth 路由下向登录面板追加「使用华为账号登录」按钮：点击经桥接拉起
+  // Login Kit 系统授权弹窗（plugin:huawei-account|login），成功显示华为
+  // 账号身份并持久化（localStorage.hwid_openid，重启后恢复已连接态）。
+  // MutationObserver 等 React 渲染完成后插入，插入一次即断开。
+  // 运行前置（缺一则报 1001500001）：module.json5 metadata.client_id =
+  // AGC 应用 APP ID；AGC 项目设置 → SDK 配置已添加发布证书 SHA256 指纹。
+  try {
+    if (location.pathname.indexOf('/auth') === 0 &&
+        typeof MutationObserver !== 'undefined') {
+      var __hwDone = false;
+      var __hwObserver = new MutationObserver(function () {
+        if (__hwDone) return;
+        var buttons = Array.prototype.filter.call(
+          document.querySelectorAll('button'),
+          function (b) { return b.textContent && b.textContent.indexOf('Discord') !== -1; });
+        var ref = buttons[buttons.length - 1];
+        if (!ref) return;
+        __hwDone = true;
+        __hwObserver.disconnect();
+        var btn = ref.cloneNode(true);
+        btn.id = 'hwid-login-btn';
+        var span = btn.querySelector('span.line-clamp-1');
+        if (!span) span = btn.querySelector('span');
+        var setText = function (t) { if (span) span.textContent = t; };
+        var iconEl = btn.querySelector('svg');
+        if (iconEl) {
+          var badge = document.createElement('span');
+          badge.style.cssText = 'width:20px;height:20px;display:inline-flex;align-items:center;' +
+            'justify-content:center;background:#CE0E2D;color:#fff;border-radius:4px;' +
+            'font-size:12px;font-weight:bold;flex-shrink:0;';
+          badge.textContent = '华';
+          iconEl.replaceWith(badge);
+        }
+        // 会话恢复：此前登录成功过的设备直接回到已连接态（本地身份，
+        // 无云后端——授权码不落 readest 云，见桥接端注释）
+        var prevId = '';
+        try { prevId = localStorage.getItem('hwid_openid') || ''; } catch (ePrev) {}
+        if (prevId) {
+          setText('已连接：' + prevId.slice(0, 10) + '…');
+          btn.disabled = true;
+        } else {
+          setText('使用华为账号登录');
+        }
+        btn.addEventListener('click', function () {
+          setText('正在拉起华为账号…');
+          var p = window.__TAURI_INTERNALS__.invoke('plugin:huawei-account|login', {});
+          p.then(function (res) {
+            if (res && res.success) {
+              setText('已连接：' + String(res.openID || '').slice(0, 10) + '…');
+              btn.disabled = true;
+              try { localStorage.setItem('hwid_openid', res.openID || ''); } catch (e2) {}
+              try { window.dispatchEvent(new CustomEvent('hwid-login-success')); } catch (e2) {}
+            } else if (res && res.cancelled) {
+              setText('使用华为账号登录');
+            } else {
+              setText('使用华为账号登录');
+              // 常见错误码翻译（Authentication Kit 错误码文档），其余透传
+              var raw = String((res && res.error) || '未知错误');
+              var m = raw.match(/code=(\d+)/);
+              var code = m ? m[1] : '';
+              var friendly = {
+                '1001500001': '应用签名指纹校验失败：需在 AGC 项目设置→SDK配置中添加发布证书指纹，并核对 client_id 配置',
+                '1001502001': '本机尚未登录华为账号：请在系统「设置→华为账号」登录后重试',
+                '1001500003': '该应用不支持所请求的授权范围'
+              }[code];
+              alert('华为账号登录失败：' + (friendly || raw));
+            }
+          }).catch(function (e3) {
+            setText('使用华为账号登录');
+            alert('华为账号登录失败：' + ((e3 && e3.message) || e3));
+          });
+        });
+        ref.parentNode.insertBefore(btn, ref.nextSibling);
+      });
+      __hwObserver.observe(document.documentElement, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', function () { __hwObserver.takeRecords(); });
+    }
+  } catch (e) { /* never block the page */ }
 
   // Upstream "self-hosted distribution" posture: this build ships without the
   // vendor's cloud/payment backend, so unlock the features the paywall gates

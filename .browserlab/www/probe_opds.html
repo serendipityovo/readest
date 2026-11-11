@@ -1,6 +1,6 @@
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <title>OPDS-PROBE</title>
-</head><body>
+<script src="/mock_bridge.js?v=pick1"></script></head><body>
 <div id="out" style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto">OPDS-PROBE-PENDING</div>
 <iframe id="app" style="width:412px;height:800px;border:1px solid #ccc"></iframe>
 <script>
@@ -99,7 +99,7 @@
     }
   }
   async function run() {
-    var CATALOG = 'https://m.gutenberg.org/ebooks.opds/';
+    var CATALOG = 'https://www.gutenberg.org/ebooks.opds/';
     frame().src = '/opds?url=' + encodeURIComponent(CATALOG);
     await waitFor(function () {
       var d = doc();

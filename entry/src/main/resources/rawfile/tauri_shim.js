@@ -28,8 +28,11 @@
 
   // ---- 华为账号一键登录按钮（登录页，审核建议项）----
   // /auth 路由下向登录面板追加「使用华为账号登录」按钮：点击经桥接拉起
-  // Login Kit 系统授权弹窗（plugin:huawei-account|login），成功显示设备
-  // 级身份。MutationObserver 等 React 渲染完成后插入，插入一次即断开。
+  // Login Kit 系统授权弹窗（plugin:huawei-account|login），成功显示华为
+  // 账号身份并持久化（localStorage.hwid_openid，重启后恢复已连接态）。
+  // MutationObserver 等 React 渲染完成后插入，插入一次即断开。
+  // 运行前置（缺一则报 1001500001）：module.json5 metadata.client_id =
+  // AGC 应用 APP ID；AGC 项目设置 → SDK 配置已添加发布证书 SHA256 指纹。
   try {
     if (location.pathname.indexOf('/auth') === 0 &&
         typeof MutationObserver !== 'undefined') {
@@ -57,7 +60,16 @@
           badge.textContent = '华';
           iconEl.replaceWith(badge);
         }
-        setText('使用华为账号登录');
+        // 会话恢复：此前登录成功过的设备直接回到已连接态（本地身份，
+        // 无云后端——授权码不落 readest 云，见桥接端注释）
+        var prevId = '';
+        try { prevId = localStorage.getItem('hwid_openid') || ''; } catch (ePrev) {}
+        if (prevId) {
+          setText('已连接：' + prevId.slice(0, 10) + '…');
+          btn.disabled = true;
+        } else {
+          setText('使用华为账号登录');
+        }
         btn.addEventListener('click', function () {
           setText('正在拉起华为账号…');
           var p = window.__TAURI_INTERNALS__.invoke('plugin:huawei-account|login', {});
@@ -71,7 +83,16 @@
               setText('使用华为账号登录');
             } else {
               setText('使用华为账号登录');
-              alert('华为账号登录失败：' + ((res && res.error) || '未知错误'));
+              // 常见错误码翻译（Authentication Kit 错误码文档），其余透传
+              var raw = String((res && res.error) || '未知错误');
+              var m = raw.match(/code=(\d+)/);
+              var code = m ? m[1] : '';
+              var friendly = {
+                '1001500001': '应用签名指纹校验失败：需在 AGC 项目设置→SDK配置中添加发布证书指纹，并核对 client_id 配置',
+                '1001502001': '本机尚未登录华为账号：请在系统「设置→华为账号」登录后重试',
+                '1001500003': '该应用不支持所请求的授权范围'
+              }[code];
+              alert('华为账号登录失败：' + (friendly || raw));
             }
           }).catch(function (e3) {
             setText('使用华为账号登录');

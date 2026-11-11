@@ -1170,7 +1170,11 @@ export class NativeBridge {
         }
         return null;
       }
-      case 'plugin:fs|read_dir': {
+      case 'plugin:fs|read_dir':
+      case 'read_dir': {
+        // 裸名形态 = native-bridge 族的 read_dir（Rust 主进程命令；前端
+        // upload_backup 等先试它，null 会触发 "Rust read_dir failed" 回退
+        // 噪音——2026-11-11 模拟器 console 实证）。与 fs 族同语义应答。
         const dirPath: string = this.fsPath(args);
         const names: string[] = fs.listFileSync(dirPath);
         const entries: FsDirent[] = [];
@@ -1609,7 +1613,11 @@ export class NativeBridge {
           header: headerRec,
           expectDataType: http.HttpDataType.ARRAY_BUFFER,
           connectTimeout: 15000,
-          readTimeout: 60000
+          readTimeout: 60000,
+          // HTTP2 协商在部分网络栈（模拟器 NAT/审核环境网关）报 "Error in
+          // the HTTP2 framing layer"（2026-11-11 模拟器实证）；OPDS 拉取
+          // 只需普通 GET，钉死 1.1 规避 h2 帧层缺陷
+          usingProtocol: http.HttpProtocol.HTTP1_1
         };
         const dataVal: Object | undefined = cfg['data'];
         if (dataVal !== undefined) {

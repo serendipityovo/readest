@@ -3,12 +3,33 @@
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.READ_WRITE_DOCUMENTS_DIRECTORY",
+        "reason": "$string:perm_docs_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
       }
     ],
     "name": "entry",
     "type": "entry",
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
+    // Login Kit（华为账号一键登录）必需：AGC 应用 APP ID。缺失或错配时
+    // Login Kit 运行时报 1001500001（指纹证书校验失败）。值为当前 AGC
+    // 应用条目的 app-identifier（与发布 Profile 内 bundle-info 一致，
+    // 构建后由 verify 脚本交叉核验；注意 ≠ DevEco 自动签名 11-10 生成
+    // 的调试 profile 所指的自动创建条目 6918746997914304657）
+    "metadata": [
+      {
+        "name": "client_id",
+        "value": "6917621257399929396"
+      }
+    ],
     "deviceTypes": [
       "2in1"
     ],
