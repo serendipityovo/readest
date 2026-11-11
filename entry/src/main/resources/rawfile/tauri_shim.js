@@ -70,35 +70,53 @@
         } else {
           setText('使用华为账号登录');
         }
-        btn.addEventListener('click', function () {
-          setText('正在拉起华为账号…');
-          var p = window.__TAURI_INTERNALS__.invoke('plugin:huawei-account|login', {});
-          p.then(function (res) {
-            if (res && res.success) {
-              setText('已连接：' + String(res.openID || '').slice(0, 10) + '…');
-              btn.disabled = true;
-              try { localStorage.setItem('hwid_openid', res.openID || ''); } catch (e2) {}
-              try { window.dispatchEvent(new CustomEvent('hwid-login-success')); } catch (e2) {}
-            } else if (res && res.cancelled) {
-              setText('使用华为账号登录');
-            } else {
-              setText('使用华为账号登录');
-              // 常见错误码翻译（Authentication Kit 错误码文档），其余透传
-              var raw = String((res && res.error) || '未知错误');
-              var m = raw.match(/code=(\d+)/);
-              var code = m ? m[1] : '';
-              var friendly = {
-                '1001500001': '应用签名指纹校验失败：需在 AGC 项目设置→SDK配置中添加发布证书指纹，并核对 client_id 配置',
-                '1001502001': '本机尚未登录华为账号：请在系统「设置→华为账号」登录后重试',
-                '1001500003': '该应用不支持所请求的授权范围'
-              }[code];
-              alert('华为账号登录失败：' + (friendly || raw));
+        // 点击处理（独立函数：委托模式从被点节点现取 span，防 React 重渲染
+        // 丢闭包引用）
+        var handleHwidClick = function (t) {
+          var sp = t.querySelector('span.line-clamp-1') || t.querySelector('span');
+          var setT = function (x) { if (sp) sp.textContent = x; };
+          setT('正在拉起华为账号…');
+          window.__TAURI_INTERNALS__.invoke('plugin:huawei-account|login', {})
+            .then(function (res) {
+              if (res && res.success) {
+                setT('已连接：' + String(res.openID || '').slice(0, 10) + '…');
+                t.disabled = true;
+                try { localStorage.setItem('hwid_openid', res.openID || ''); } catch (e2) {}
+                try { window.dispatchEvent(new CustomEvent('hwid-login-success')); } catch (e2) {}
+              } else if (res && res.cancelled) {
+                setT('使用华为账号登录');
+              } else {
+                setT('使用华为账号登录');
+                // 常见错误码翻译（Authentication Kit 错误码文档），其余透传
+                var raw = String((res && res.error) || '未知错误');
+                var m = raw.match(/code=(\d+)/);
+                var code = m ? m[1] : '';
+                var friendly = {
+                  '1001500001': '应用签名指纹校验失败：需在 AGC 项目设置→SDK配置中添加发布证书指纹，并核对 client_id 配置',
+                  '1001502001': '本机尚未登录华为账号：请在系统「设置→华为账号」登录后重试',
+                  '1001502003': 'client_id 无效：请核对 AGC 项目设置中的 client_id 与应用是否开通账号服务'
+                }[code];
+                alert('华为账号登录失败：' + (friendly || raw));
+              }
+            }).catch(function (e3) {
+              setT('使用华为账号登录');
+              alert('华为账号登录失败：' + ((e3 && e3.message) || e3));
+            });
+        };
+        // 事件委托（2026-11-11 模拟器实证：React 重渲染会替换克隆节点的
+        // 监听器槽位，clone 时挂的 addEventListener 会静默丢失——改挂
+        // document 捕获阶段，按 id 匹配，任意代 DOM 都能响应）
+        document.addEventListener('click', function (ev) {
+          var t = ev.target;
+          while (t && t !== document.body) {
+            if (t.id === 'hwid-login-btn') {
+              if (t.disabled) return;
+              handleHwidClick(t);
+              return;
             }
-          }).catch(function (e3) {
-            setText('使用华为账号登录');
-            alert('华为账号登录失败：' + ((e3 && e3.message) || e3));
-          });
-        });
+            t = t.parentElement;
+          }
+        }, true);
         ref.parentNode.insertBefore(btn, ref.nextSibling);
       });
       __hwObserver.observe(document.documentElement, { childList: true, subtree: true });

@@ -1218,6 +1218,7 @@
       return [true, JSON.stringify(joined)];
     }
     if (cmd === 'get_executable_dir') return [true, '"/lab/exec"'];
+    if (cmd === 'plugin:huawei-account|login') return [true, '{"success":true,"openID":"LABTESTOPENID123","unionID":"u1"}'];
     // deep-link：lab 无深链，空数组（前端 urls ?? [] → 释放 launch gate）
     if (cmd === 'plugin:deep-link|get_current') return [true, '[]'];
 
