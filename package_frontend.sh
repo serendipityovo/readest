@@ -169,9 +169,24 @@ for p in glob.glob(os.path.join(RAW, "*.html")):
     s = io.open(p, encoding="utf-8", errors="ignore").read()
     s2 = tl.sub(BRAND, s)
     s2 = norm.sub(BRAND, s2)
+    # [6c2] 路由 shell title 里的旧名后缀/短语（2026-11-12 census 发现：
+    # "Account & Sign In | Readest"、"Open in Readest | Readest" —— /user
+    # 等路由初始 title 露旧名；深层目录递归补扫）
+    s2 = re.sub(r"<title>([^<]*)\s*\|\s*Readest\s*</title>",
+                lambda m: "<title>" + m.group(1) + " | " + BRAND + "</title>", s2)
+    s2 = s2.replace("Open in Readest", "Open in " + BRAND)
     if s2 != s:
         io.open(p, "w", encoding="utf-8").write(s2)
         print("  html:", os.path.basename(p))
+# 深层路由 shell（user/subscription/ 等子目录）同规则
+for p in glob.glob(os.path.join(RAW, "*", "*.html")) + glob.glob(os.path.join(RAW, "*", "*", "*.html")):
+    s = io.open(p, encoding="utf-8", errors="ignore").read()
+    s2 = re.sub(r"<title>([^<]*)\s*\|\s*Readest\s*</title>",
+                lambda m: "<title>" + m.group(1) + " | " + BRAND + "</title>", s)
+    s2 = s2.replace("Open in Readest", "Open in " + BRAND)
+    if s2 != s:
+        io.open(p, "w", encoding="utf-8").write(s2)
+        print("  deep html:", os.path.relpath(p, RAW))
 BRANDNE
 
 # 关于页版权行加发行者声明（审核 1.20/一致性问题：AGPL 署名保留的同时
