@@ -969,7 +969,22 @@ export class NativeBridge {
         const p3: string = this.fsPath(args);
         this.fsEnsureDir(this.parentDir(p3));
         const bytes: Uint8Array = this.fsExtractBytes(args);
+        // 0 字节防御（第四轮审核 'File is empty' 根因链）：wire 协议下字节
+        // 以 body 形态到达（shim 现 base64 包装为 {__b64}；兼容旧字节映射
+        // {"0":228,...}）。若到达的数据形态明显非空但解析出 0 字节，静默
+        // 写空文件会让导入"成功"建卡而开书必炸 File is empty——当场抛错。
+        // 覆盖两种到达形态：contents 字段 / body 顶层（args 自身）
+        const probe: Object = args['contents'] !== undefined ? args['contents'] : args;
+        const probeLen: number = JSON.stringify(probe).length;
+        if (bytes.length === 0 && probeLen > 80) {
+          throw new Error(`write body unparsed to 0 bytes (probe=${probeLen}): ${p3.slice(-50)}`);
+        }
         this.fsWriteBytes(p3, bytes);
+        // 写后核验：落盘大小必须等于意图写入大小（部分写/静默截断同罪）
+        const wst: fs.Stat = fs.statSync(p3);
+        if (wst.size !== bytes.length) {
+          throw new Error(`write verify failed: wrote ${wst.size}/${bytes.length}: ${p3.slice(-50)}`);
+        }
         return null;
       }
       case 'plugin:fs|remove': {
@@ -1040,7 +1055,16 @@ export class NativeBridge {
           throw new Error(`bad file handle: ${rid}`);
         }
         const wantLen: number = Number(args['len'] ?? 0);
-        const stat: fs.Stat = fs.statSync(h.path);
+        let stat: fs.Stat = fs.statSync(h.path);
+        // 存储时序防御（第四轮审核 'File is empty' 候选根因）：导入写入后
+        // 立即开书的场景，部分设备（手机形态实测）首次 stat 可能读到
+        // size=0 的旧元数据——小睡后重试一次再判定 EOF
+        if (stat.size === 0 && h.pos === 0) {
+          await new Promise<void>((resolve: () => void): void => {
+            setTimeout((): void => { resolve(); }, 150);
+          });
+          stat = fs.statSync(h.path);
+        }
         const n: number = Math.min(wantLen, stat.size - h.pos);
         const out: number[] = [];
         if (n > 0) {
@@ -2247,6 +2271,15 @@ export class NativeBridge {
     }
     const src: Record<string, Object> = contents !== undefined
       ? contents as Record<string, Object> : args;
+    // base64 包装形态（第四轮审核根治：shim 对 write 命令的 Uint8Array body
+    // 改发 {__b64:'...'}——原始字符串在任何 ArkWeb 构建上序列化行为一致，
+    // 彻底免疫字节映射 {"0":228,...} 的跨设备序列化差异，后者在两台审核
+    // 设备（Pura80 API26 / Mate60 API24）上静默产出 0 字节文件）
+    const b64: Object | undefined = src['__b64'];
+    if (typeof b64 === 'string' && b64.length > 0) {
+      const helper = new util.Base64Helper();
+      return helper.decodeSync(b64);
+    }
     const vals: number[] = [];
     const keys: string[] = Object.keys(src);
     for (let i = 0; i < keys.length; i++) {

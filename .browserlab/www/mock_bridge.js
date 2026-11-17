@@ -112,6 +112,9 @@
   function decodeForStore(c) {
     if (typeof c === 'string') return { text: c };
     if (c && typeof c === 'object') {
+      // shim 2026-11-17+: write 二进制 body 以 {__b64} 包装到达（与真机
+      // NativeBridge fsExtractBytes 的 __b64 分支镜像）
+      if (typeof c.__b64 === 'string') return { b64: c.__b64 };
       var bytes = byteMapBytes(c);
       try {
         var text = utf8DecodeStrict(bytes);

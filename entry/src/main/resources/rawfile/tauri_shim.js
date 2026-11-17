@@ -151,6 +151,17 @@
   var reqSeq = 1;
   var cbSeq = 1;
 
+  // Uint8Array/ArrayBuffer → base64（分块，防大文件 String.fromCharCode 栈溢出；
+  // 与桥端 util.Base64Helper.decodeSync 配对）
+  function bytesToB64(input) {
+    var u8 = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
+    var binary = '';
+    for (var i = 0; i < u8.length; i += 0x8000) {
+      binary += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+  }
+
   function jsonSafe(v, fallback) {
     try { return JSON.stringify(v); } catch (e) { return fallback; }
   }
@@ -221,8 +232,21 @@
     return new Promise(function (resolve, reject) {
       var id = reqSeq++;
       pending.set(id, { resolve: resolve, reject: reject });
+      // 写命令的二进制 body → base64 包装（第四轮审核根治）：字节映射
+      // JSON {"0":228,...} 在两台审核设备的 ArkWeb 代理序列化上静默丢失
+      // （导入"成功"建卡、开书 File is empty）；base64 是原始字符串，任何
+      // 引擎序列化行为一致。桥端 fsExtractBytes 识别 {__b64} 并解码，
+      // 旧字节映射形态保留兼容。
       var payload;
-      try { payload = JSON.stringify(args); } catch (e) { payload = '{}'; }
+      try {
+        if ((cmd === 'plugin:fs|write_file' || cmd === 'plugin:fs|write_text_file') &&
+            args && typeof args === 'object' &&
+            (typeof args.byteLength === 'number' || args instanceof ArrayBuffer)) {
+          payload = JSON.stringify({ __b64: bytesToB64(args) });
+        } else {
+          payload = JSON.stringify(args);
+        }
+      } catch (e) { payload = '{}'; }
       // Tauri v2 fs write protocol: contents travel as the invoke BODY (raw
       // bytes) while path/options ride in options.headers (path URL-encoded).
       // The bridge needs both to reconstruct the call.
