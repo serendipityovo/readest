@@ -124,44 +124,84 @@
     }
   } catch (e) { /* never block the page */ }
 
-  // ---- 邮箱认证表单隐藏（五轮审核问题2；2026-11-18）----
-  // 上游账号体系=Supabase 海外后端：注册验证邮件内的确认链接域名在大陆
-  // 网络不可达（审核实测"点击邮件内地址无法访问"），客户端不可修。隐藏
-  // 邮箱登录/注册入口（保留第三方按钮+华为账号登录），消除不可用功能面。
+  // ---- 登录入口区域自适应（五轮问题2；2026-11-18 终版）----
+  // 逻辑：探测上游账号服务（Supabase 海外）可达性——可达（海外网络/
+  // 代理）则 Google/Apple/GitHub/Discord/邮箱 全部入口原样可用；不可达
+  // （大陆网络，即审核环境）则四按钮置灰 + 顶部说明条 + 邮箱表单收起，
+  // 华为账号登录（Account Kit，华为侧服务）始终可用。入口全部保留。
   try {
     if (location.pathname.indexOf('/auth') === 0) {
-      var __hideEmail = function () {
-        var divider = null;
-        var spans = document.querySelectorAll('span, p, div, h2, h3');
-        for (var i = 0; i < spans.length; i++) {
-          var t = (spans[i].textContent || '').replace(/\s+/g, ' ').trim();
-          if (t === '或使用邮箱继续' || t === 'Or continue with email' ||
-              t === '继续输入邮箱' || t.toLowerCase() === 'continue with email') {
-            divider = spans[i];
-            break;
+      var __authApply = function (reachable) {
+        try {
+          if (reachable) return;
+          var panel = document.querySelector('main') || document.body;
+          if (!document.getElementById('__auth-region-note')) {
+            var note = document.createElement('div');
+            note.id = '__auth-region-note';
+            note.style.cssText = 'margin:12px auto 4px;max-width:24rem;padding:10px 14px;' +
+              'border:1px solid #e5a50a;border-radius:8px;background:#fdf6e3;' +
+              'color:#7a5b00;font-size:13px;line-height:1.5;text-align:center;';
+            note.textContent = '海外登录服务在当前网络环境下无法访问。您可以使用华为账号登录；全部阅读功能无需登录即可使用。';
+            var firstBtn = document.querySelector('button');
+            if (firstBtn && firstBtn.parentElement) {
+              firstBtn.parentElement.insertBefore(note, firstBtn);
+            } else {
+              panel.insertBefore(note, panel.firstChild);
+            }
+          }
+          var btns = document.querySelectorAll('button');
+          for (var i = 0; i < btns.length; i++) {
+            var b = btns[i];
+            if (b.id === 'hwid-login-btn' || b.getAttribute('data-region-dim')) continue;
+            var t = (b.textContent || '').replace(/\s+/g, ' ').trim();
+            if (/^(使用\s*)?(Google|Apple|GitHub|Discord|Sign in with (Google|Apple|GitHub|Discord))/i.test(t) && t.length < 40) {
+              b.disabled = true;
+              b.style.opacity = '0.45';
+              b.style.cursor = 'not-allowed';
+              b.setAttribute('data-region-dim', '1');
+            }
+          }
+          // 邮箱表单收起（同源依赖）：找分隔文案隐藏其后兄弟
+          var divider = null;
+          var spans = document.querySelectorAll('span, p, div, h2, h3');
+          for (var j = 0; j < spans.length; j++) {
+            var dt = (spans[j].textContent || '').replace(/\s+/g, ' ').trim();
+            if (dt === '或使用邮箱继续' || dt === 'Or continue with email' ||
+                dt.toLowerCase() === 'continue with email') {
+              divider = spans[j]; break;
+            }
+          }
+          if (divider && !divider.getAttribute('data-email-hidden')) {
+            divider.setAttribute('data-email-hidden', '1');
+            var el = divider;
+            while (el) {
+              var next = el.nextElementSibling;
+              el.style.display = 'none';
+              el = next;
+            }
+          }
+        } catch (e) { /* never block */ }
+      };
+      var __authProbe = function () {
+        try {
+          var ctl = new AbortController();
+          setTimeout(function () { ctl.abort(); }, 4000);
+          fetch(window.__AUTH_PROBE_URL || (function(){try{return localStorage.getItem('__AUTH_PROBE_URL') || '';}catch(e){return '';}})() || 'https://vbsyxfusjjqdxkjqlysc.supabase.co/auth/v1/health', {
+            method: 'GET', signal: ctl.signal, cache: 'no-store'
+          }).then(function (r) { __authApply(true); })
+            .catch(function () { __authApply(false); });
+        } catch (e) { __authApply(false); }
+      };
+      var __authObs = new MutationObserver(function () {
+        if (document.getElementById('hwid-login-btn')) {
+          __authObs.disconnect();
+          if (!window.__authRegionDone) {
+            window.__authRegionDone = true;
+            __authProbe();
           }
         }
-        if (!divider || divider.getAttribute('data-email-hidden')) return;
-        divider.setAttribute('data-email-hidden', '1');
-        // 从分隔文案起，隐藏其所在的后续表单区块（向上找一个合理的容器）
-        var container = divider.parentElement;
-        for (var up = 0; up < 4 && container && container !== document.body; up++) {
-          if (container.nextElementSibling || container.children.length > 1) break;
-          container = container.parentElement;
-        }
-        var node = divider.closest('form') || container || divider.parentElement;
-        var el = divider;
-        // 隐藏 divider 之后的所有兄弟节点（邮箱输入/登录/魔法链接/注册）
-        while (el) {
-          var next = el.nextElementSibling;
-          el.style.display = 'none';
-          el = next;
-        }
-        divider.style.display = 'none';
-      };
-      var __emailObs = new MutationObserver(function () { __hideEmail(); });
-      __emailObs.observe(document.documentElement, { childList: true, subtree: true });
-      document.addEventListener('DOMContentLoaded', function () { __hideEmail(); });
+      });
+      __authObs.observe(document.documentElement, { childList: true, subtree: true });
     }
   } catch (e) { /* never block the page */ }
 
