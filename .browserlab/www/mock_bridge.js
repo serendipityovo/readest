@@ -1357,7 +1357,15 @@
     if (cmd === 'plugin:fs|write') {
       var wh2 = fhMap[args.rid | 0];
       if (!wh2) return [false, 'bad file handle: ' + args.rid];
-      var wd = args.data || [];
+      // data 归一：流式写 chunk 经 JSON 是字节映射对象（真机桥同款修复）
+      var wraw = args.data;
+      var wd;
+      if (wraw && typeof wraw === 'object' && !Array.isArray(wraw)) {
+        if (typeof wraw.__b64 === 'string') {
+          var wb = atob(wraw.__b64); wd = [];
+          for (var wj = 0; wj < wb.length; wj++) wd.push(wb.charCodeAt(wj));
+        } else wd = byteMapBytes(wraw);
+      } else wd = wraw || [];
       for (var wi = 0; wi < wd.length; wi++) wh2.bytes[wh2.pos + wi] = wd[wi];
       wh2.pos += wd.length; wh2.dirty = true;
       return [true, 'null'];

@@ -969,14 +969,15 @@ export class NativeBridge {
         const p3: string = this.fsPath(args);
         this.fsEnsureDir(this.parentDir(p3));
         const bytes: Uint8Array = this.fsExtractBytes(args);
-        // 0 字节防御（第四轮审核 'File is empty' 根因链）：wire 协议下字节
-        // 以 body 形态到达（shim 现 base64 包装为 {__b64}；兼容旧字节映射
-        // {"0":228,...}）。若到达的数据形态明显非空但解析出 0 字节，静默
-        // 写空文件会让导入"成功"建卡而开书必炸 File is empty——当场抛错。
-        // 覆盖两种到达形态：contents 字段 / body 顶层（args 自身）
+        // 0 字节防御（三/四/五轮审核 'File is empty' 根因链）：wire 协议下
+        // 字节以 body 形态到达（shim 现 base64 包装 {__b64}；兼容旧字节映
+        // 射）。二进制 write_file 的 0 字节 = 序列化丢包（File 对象曾序列化
+        // 成 '{}'）——本应用无合法空二进制写入（书籍/导航/缩略图皆非空），
+        // 无条件拒绝，杜绝"导入成功建卡、开书必炸"的静默腐化。
+        const isBinaryCmd: boolean = bareCmd === 'plugin:fs|write_file';
         const probe: Object = args['contents'] !== undefined ? args['contents'] : args;
         const probeLen: number = JSON.stringify(probe).length;
-        if (bytes.length === 0 && probeLen > 80) {
+        if (bytes.length === 0 && (isBinaryCmd || probeLen > 80)) {
           throw new Error(`write body unparsed to 0 bytes (probe=${probeLen}): ${p3.slice(-50)}`);
         }
         this.fsWriteBytes(p3, bytes);
@@ -1031,10 +1032,14 @@ export class NativeBridge {
           const wantCreate: boolean = o['create'] === true || o['createNew'] === true;
           const wantTrunc: boolean = o['truncate'] === true;
           if (wantWrite || wantCreate || wantTrunc) {
+            // 流式整文件写语义（writeFile stream 分支 open {write,create}）：
+            // 隐含覆盖写——补 TRUNC，防重复导入同书时旧尾字节残留毁 zip 结构
+            const implyTrunc: boolean = wantWrite && wantCreate
+              && o['append'] !== true && !wantTrunc;
             mode = fs.OpenMode.READ_WRITE
               | (wantCreate ? fs.OpenMode.CREATE : 0)
               | (o['append'] === true ? fs.OpenMode.APPEND : 0)
-              | (wantTrunc ? fs.OpenMode.TRUNC : 0);
+              | (wantTrunc || implyTrunc ? fs.OpenMode.TRUNC : 0);
           }
         }
         if (!this.fsExists(fhPath) && mode === fs.OpenMode.READ_ONLY) {
@@ -1094,8 +1099,24 @@ export class NativeBridge {
         if (wh === undefined) {
           throw new Error(`bad file handle: ${wrid}`);
         }
-        const wArr: number[] = args['data'] as Object as number[];
-        const wBytes: Uint8Array = new Uint8Array(wArr);
+        // 数据形态归一（三~五轮 'File is empty' 真凶终局）：插件流式写分支
+        // （nativeAppService.writeFile 对内存 File 走 content.stream()）逐块
+        // 调本命令，chunk 的 Uint8Array 经 JSON 成字节映射对象——旧代码强转
+        // number[] 得空数组=每块写 0 字节→落盘 0 字节（导入"成功"建卡、
+        // 开书 File is empty；write_file 路径从未被走到，故前两轮修复无效）。
+        // 复用 fsExtractBytes 统一解析（字节映射/number[]/字符串/__b64）。
+        const wArgs: Record<string, Object> = {};
+        const wData: Object | undefined = args['data'];
+        if (wData !== undefined) {
+          wArgs['contents'] = wData;
+        }
+        const wBytes: Uint8Array = this.fsExtractBytes(wArgs);
+        const dataProbe: Object | undefined = args['data'];
+        const dataLen: number = dataProbe !== undefined
+          ? JSON.stringify(dataProbe).length : 0;
+        if (wBytes.length === 0 && dataLen > 8) {
+          throw new Error(`fs write chunk unparsed to 0 bytes (probe=${dataLen})`);
+        }
         const wBuf: ArrayBuffer = new ArrayBuffer(wBytes.length);
         new Uint8Array(wBuf).set(wBytes);
         const wOff: number | undefined = args['offset'] !== undefined

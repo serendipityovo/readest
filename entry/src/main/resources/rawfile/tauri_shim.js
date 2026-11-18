@@ -124,6 +124,47 @@
     }
   } catch (e) { /* never block the page */ }
 
+  // ---- 邮箱认证表单隐藏（五轮审核问题2；2026-11-18）----
+  // 上游账号体系=Supabase 海外后端：注册验证邮件内的确认链接域名在大陆
+  // 网络不可达（审核实测"点击邮件内地址无法访问"），客户端不可修。隐藏
+  // 邮箱登录/注册入口（保留第三方按钮+华为账号登录），消除不可用功能面。
+  try {
+    if (location.pathname.indexOf('/auth') === 0) {
+      var __hideEmail = function () {
+        var divider = null;
+        var spans = document.querySelectorAll('span, p, div, h2, h3');
+        for (var i = 0; i < spans.length; i++) {
+          var t = (spans[i].textContent || '').replace(/\s+/g, ' ').trim();
+          if (t === '或使用邮箱继续' || t === 'Or continue with email' ||
+              t === '继续输入邮箱' || t.toLowerCase() === 'continue with email') {
+            divider = spans[i];
+            break;
+          }
+        }
+        if (!divider || divider.getAttribute('data-email-hidden')) return;
+        divider.setAttribute('data-email-hidden', '1');
+        // 从分隔文案起，隐藏其所在的后续表单区块（向上找一个合理的容器）
+        var container = divider.parentElement;
+        for (var up = 0; up < 4 && container && container !== document.body; up++) {
+          if (container.nextElementSibling || container.children.length > 1) break;
+          container = container.parentElement;
+        }
+        var node = divider.closest('form') || container || divider.parentElement;
+        var el = divider;
+        // 隐藏 divider 之后的所有兄弟节点（邮箱输入/登录/魔法链接/注册）
+        while (el) {
+          var next = el.nextElementSibling;
+          el.style.display = 'none';
+          el = next;
+        }
+        divider.style.display = 'none';
+      };
+      var __emailObs = new MutationObserver(function () { __hideEmail(); });
+      __emailObs.observe(document.documentElement, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', function () { __hideEmail(); });
+    }
+  } catch (e) { /* never block the page */ }
+
   // Upstream "self-hosted distribution" posture: this build ships without the
   // vendor's cloud/payment backend, so unlock the features the paywall gates
   // (isSelfHosted() in src/utils/access.ts reads this window key) — otherwise
@@ -232,34 +273,43 @@
     return new Promise(function (resolve, reject) {
       var id = reqSeq++;
       pending.set(id, { resolve: resolve, reject: reject });
-      // 写命令的二进制 body → base64 包装（第四轮审核根治）：字节映射
-      // JSON {"0":228,...} 在两台审核设备的 ArkWeb 代理序列化上静默丢失
-      // （导入"成功"建卡、开书 File is empty）；base64 是原始字符串，任何
-      // 引擎序列化行为一致。桥端 fsExtractBytes 识别 {__b64} 并解码，
-      // 旧字节映射形态保留兼容。
-      var payload;
-      try {
-        if ((cmd === 'plugin:fs|write_file' || cmd === 'plugin:fs|write_text_file') &&
-            args && typeof args === 'object' &&
-            (typeof args.byteLength === 'number' || args instanceof ArrayBuffer)) {
-          payload = JSON.stringify({ __b64: bytesToB64(args) });
-        } else {
-          payload = JSON.stringify(args);
-        }
-      } catch (e) { payload = '{}'; }
-      // Tauri v2 fs write protocol: contents travel as the invoke BODY (raw
-      // bytes) while path/options ride in options.headers (path URL-encoded).
-      // The bridge needs both to reconstruct the call.
+      // 写命令的二进制 body → base64 包装（三/四/五轮审核 TXT 'File is
+      // empty' 真凶实锤：plugin-fs writeFile 把 File 对象原样作 invoke body，
+      // JSON.stringify(File)='{}' → 桥收到空映射 → 静默 0 字节落盘 → 导入
+      // "成功"建卡、开书 File is empty。File/Blob/TypedArray 全形态归一为
+      // base64 字符串（跨引擎序列化一致）；桥端 fsExtractBytes 识别并解码，
+      // 旧字节映射形态保留兼容。）
       var headersJson = 'null';
       try {
         if (options && options.headers) { headersJson = JSON.stringify(options.headers); }
       } catch (e) { /* headers stay null */ }
-      try {
-        window.__ohosBridge.invoke(cmd, id, payload, headersJson);
-      } catch (e) {
-        pending.delete(id);
-        reject(new Error('bridge unavailable: ' + cmd));
-      }
+      (async function () {
+        var payload;
+        try {
+          if ((cmd === 'plugin:fs|write_file' || cmd === 'plugin:fs|write_text_file') &&
+              args && typeof args === 'object') {
+            var u8 = null;
+            if (typeof Blob !== 'undefined' && args instanceof Blob) {
+              u8 = new Uint8Array(await args.arrayBuffer());
+            } else if (typeof args.byteLength === 'number') {
+              u8 = args;
+            } else if (args instanceof ArrayBuffer) {
+              u8 = new Uint8Array(args);
+            }
+            if (u8 !== null) {
+              payload = JSON.stringify({ __b64: bytesToB64(u8) });
+            } else {
+              payload = JSON.stringify(args);
+            }
+          } else {
+            payload = JSON.stringify(args);
+          }
+          window.__ohosBridge.invoke(cmd, id, payload, headersJson);
+        } catch (e) {
+          pending.delete(id);
+          reject(new Error('bridge unavailable: ' + cmd));
+        }
+      })();
     });
   }
 
